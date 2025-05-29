@@ -51,7 +51,7 @@ function Download-GitHubRelease {
         [string[]]$Assets = @(), # Array of specific asset names to download
         [string]$libPath
     )
-    Write-Host $Assets
+    Write-Verbose $Assets
     # Define the API URL
     if ($Version -eq "latest") {
         $url = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"        
@@ -76,10 +76,10 @@ function Download-GitHubRelease {
             }
 
             if ($assetsToDownload.Count -eq 0) {
-                Write-Host "No matching assets found to download."
+                Write-Warning "No matching assets found to download."
                 return
             } else {
-                Write-Host "Available releases for $RepoOwner/$RepoName :`n"
+                Write-Verbose "Available releases for $RepoOwner/$RepoName :`n"
             }
 
             foreach ($asset in $assetsToDownload) {
@@ -91,7 +91,7 @@ function Download-GitHubRelease {
                 }                
 
                 if ($isDownloaded) {
-                    Write-Host "$fileName (Already downloaded)"
+                    Write-Verbose "$fileName (Already downloaded)"
                 }
                 else {
                     $downloadUrl = $asset.browser_download_url

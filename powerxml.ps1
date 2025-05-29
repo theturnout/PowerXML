@@ -6,7 +6,7 @@ param(
 $localRepository = "$HOME/.polyglotpm"
 #process bundle
 Import-Module ./polyglot -Force
-[System.Collections.ArrayList]$paths = Copy-Software-Composition `
+[System.Collections.ArrayList]$paths = Copy-SoftwareComposition `
     -sbomPath .\sbom.xml `
     -targetComposition $targetComposition `
     -localRepository  $localRepository
@@ -35,7 +35,7 @@ if ($processing -eq "xproc") {
         ForEach-Object {
             $cp = "$cp;$_"
         }
-        Write-Host "ClassaPath" $cp
+        Write-Host "ClassPath: $cp"
         # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
 
         java -cp "$cp" com.xmlcalabash.app.Main $args

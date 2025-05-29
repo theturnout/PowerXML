@@ -10,13 +10,15 @@
 
 $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
 
-function Copy-Software-Composition {
+function Copy-SoftwareComposition {
+  [CmdletBinding()]
   param(
     [Parameter(Mandatory = $true)]
     [string] $sbomPath,
     [Parameter(Mandatory = $true)]
     [string] $targetComposition,
     [string] $localRepository = "$HOME/.polyglotpm"
+    #[bool] $verbose = $false
   )
 
   $file = Resolve-Path $sbomPath
@@ -37,11 +39,11 @@ function Copy-Software-Composition {
     # pull the distribution version preferrentially over the pkg mgr version
     $distribution = $currComp.externalReferences.reference.url
     if ($distribution) {
-      Write-Host $distribution
+      Write-Verbose $distribution
       $purl = ConvertFrom-PkgUri($distribution)
     }
     else {
-      Write-Host $currComp.purl
+      Write-Verbose $currComp.purl
       $purl = ConvertFrom-PkgUri($currComp.purl)
     }
 
@@ -70,9 +72,13 @@ function Copy-Software-Composition {
       # Main Execution
       $rootPom = Get-MavenArtifact -groupId $groupId -artifactId $artifactId -version $version -repoUrl $repoUrl -downloadPath $downloadPath
       if ($rootPom) {
-        $paths.AddRange((Resolve-Dependencies -pomFile $rootPom -repoUrl $MAVEN_CENTRAL -downloadPath $downloadPath))
+        $currentPaths = Resolve-Dependencies -pomFile $rootPom -repoUrl $MAVEN_CENTRAL -downloadPath $downloadPath
+        if($currentPaths){
+          $paths.AddRange($currentPaths)
+        }
+        Write-Host "current for $artifactId : $currentPaths"
       }
-      Write-Host "Maven dependencies downloaded to: $downloadPath"
+      Write-Verbose "Maven dependencies downloaded to: $downloadPath"
     }
     elseif ($purl.Type -eq "sourceforge") {
 

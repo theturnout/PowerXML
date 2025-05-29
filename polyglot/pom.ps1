@@ -3,7 +3,6 @@
 # May not work well now that it's global.
 $resolvedPOMs = @{}
 
-
 function Get-MavenArtifact {
     param (
         [string]$groupId,
@@ -31,14 +30,14 @@ function Get-MavenArtifact {
         Write-Host "Downloading JAR: $jarUrl"
         Invoke-WebRequest -Uri $jarUrl -OutFile $jarFile
     } else {
-        Write-Host "JAR already exists: $jarFile"
+        Write-Verbose "JAR already exists: $jarFile"
     }
 
     if (!(Test-Path $pomFile)) {
         Write-Host "Downloading POM: $pomUrl"
         Invoke-WebRequest -Uri $pomUrl -OutFile $pomFile
     } else {
-        Write-Host "POM already exists: $pomFile"
+        Write-Verbose "POM already exists: $pomFile"
     }
 
     return $pomFile
@@ -69,31 +68,33 @@ function Resolve-Dependencies {
 
         # Skip dependencies that are not needed at runtime
         if ($depScope -eq "test" -or $depScope -eq "system" -or ($dep.optional -eq "true")) {
-            Write-Host "Skipping non-runtime or optional dependency: ${depGroupId}:${depArtifactId}:${depVersion} (scope: $depScope)"
+            Write-Verbose "Skipping non-runtime or optional dependency: ${depGroupId}:${depArtifactId}:${depVersion} (scope: $depScope)"
             continue
         }
 
         if (-not $depVersion) {
-            Write-Host "Skipping dependency without version: ${depGroupId}:${depArtifactId}. Dependency Management is not currently supported" -ForegroundColor Yellow
+            Write-Warning "Skipping dependency without version: ${depGroupId}:${depArtifactId}. Dependency Management is not currently supported"
             continue
         }
         
         $depKey = "${depGroupId}:${depArtifactId}:${depVersion}"
 
         if ($resolvedPOMs.ContainsKey($depKey)) {
-            Write-Host "Skipping already resolved dependency: $depKey"
+            Write-Verbose "Skipping already resolved dependency: $depKey"
             continue
         }
 
         $resolvedPOMs[$depKey] = $true  # Mark this dependency as resolved
 
-        Write-Host "Resolving Dependency: ${depGroupId}:${depArtifactId}:${depVersion}"
+        Write-Verbose "Resolving Dependency: ${depGroupId}:${depArtifactId}:${depVersion}"
         $depPomFile = Get-MavenArtifact -groupId $depGroupId -artifactId $depArtifactId -version $depVersion -repoUrl $repoUrl -downloadPath $downloadPath
         
         if ($depPomFile) {
-            $paths.AddRange((Resolve-Dependencies -pomFile $depPomFile -repoUrl $repoUrl -downloadPath $downloadPath))
+            $currentPaths = Resolve-Dependencies -pomFile $depPomFile -repoUrl $repoUrl -downloadPath $downloadPath
+            if ($currentPaths) {
+                $paths.AddRange($currentPaths)
+            }
         }
-        
         $paths.Add("$downloadPath\$depArtifactId-$depVersion")
         
     }
