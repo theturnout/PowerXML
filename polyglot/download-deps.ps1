@@ -51,7 +51,7 @@ function Download-GitHubRelease {
         [string[]]$Assets = @(), # Array of specific asset names to download
         [string]$libPath
     )
-    Write-Verbose $Assets
+    Write-Verbose $Assets.ToString()
     # Define the API URL
     if ($Version -eq "latest") {
         $url = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"        

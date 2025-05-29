@@ -29,14 +29,16 @@ function Get-MavenArtifact {
     if (!(Test-Path $jarFile)) {
         Write-Host "Downloading JAR: $jarUrl"
         Invoke-WebRequest -Uri $jarUrl -OutFile $jarFile
-    } else {
+    }
+    else {
         Write-Verbose "JAR already exists: $jarFile"
     }
 
     if (!(Test-Path $pomFile)) {
         Write-Host "Downloading POM: $pomUrl"
         Invoke-WebRequest -Uri $pomUrl -OutFile $pomFile
-    } else {
+    }
+    else {
         Write-Verbose "POM already exists: $pomFile"
     }
 
@@ -53,8 +55,6 @@ function Resolve-Dependencies {
     [xml]$pomXml = Get-Content -Path $pomFile
     $dependencies = $pomXml.project.dependencies.dependency
     	
-    $paths = [System.Collections.ArrayList]::new()
-
     foreach ($dep in $dependencies) {
         $depGroupId = $dep.groupId
         $depArtifactId = $dep.artifactId
@@ -88,14 +88,14 @@ function Resolve-Dependencies {
 
         Write-Verbose "Resolving Dependency: ${depGroupId}:${depArtifactId}:${depVersion}"
         $depPomFile = Get-MavenArtifact -groupId $depGroupId -artifactId $depArtifactId -version $depVersion -repoUrl $repoUrl -downloadPath $downloadPath
+        $paths = @("$downloadPath\$depArtifactId-$depVersion")
         
         if ($depPomFile) {
             $currentPaths = Resolve-Dependencies -pomFile $depPomFile -repoUrl $repoUrl -downloadPath $downloadPath
             if ($currentPaths) {
-                $paths.AddRange($currentPaths)
+                $paths += $currentPaths
             }
         }
-        $paths.Add("$downloadPath\$depArtifactId-$depVersion")
         
     }
     return $paths

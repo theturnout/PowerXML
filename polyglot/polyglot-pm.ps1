@@ -31,7 +31,6 @@ function Copy-SoftwareComposition {
     exit 1
   }
   
-  $paths = [System.Collections.ArrayList]::new()
   $composition.dependencies.dependency | ForEach-Object {
     $cur = $_.ref
     $currComp = $bom.components.component | Where-Object { $_."bom-ref" -eq $cur }
@@ -47,8 +46,8 @@ function Copy-SoftwareComposition {
       $purl = ConvertFrom-PkgUri($currComp.purl)
     }
 
-   # $purl | Format-List
-   # Write-Output "------------------------------------"
+    # $purl | Format-List
+    # Write-Output "------------------------------------"
     # try to download files
 
     if ($purl.Type -eq "maven") {
@@ -67,16 +66,15 @@ function Copy-SoftwareComposition {
       $downloadPath = "$localRepository"
 
 
-      $paths.Add("$downloadPath\$artifactId-$version")
+      #$paths = @("$downloadPath\$artifactId-$version")
 
       # Main Execution
       $rootPom = Get-MavenArtifact -groupId $groupId -artifactId $artifactId -version $version -repoUrl $repoUrl -downloadPath $downloadPath
       if ($rootPom) {
         $currentPaths = Resolve-Dependencies -pomFile $rootPom -repoUrl $MAVEN_CENTRAL -downloadPath $downloadPath
-        if($currentPaths){
-          $paths.AddRange($currentPaths)
+        if ($currentPaths) {
+          $paths += $currentPaths
         }
-        Write-Host "current for $artifactId : $currentPaths"
       }
       Write-Verbose "Maven dependencies downloaded to: $downloadPath"
     }
