@@ -39,14 +39,15 @@ if ($processing -eq "xproc") {
         #Write-Host "ClassPath: $cp"
         # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
         if($inPort){
-        $xcInput = $inPort.GetEnumerator() | ForEach-Object {
-            "--input:$($_.Key)=`"$($_.Value)`""
+            $xcInput = @()
+            foreach($enum in $inPort.GetEnumerator()) {
+                $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
             }
         }
-        $xcArgs = "$xcInput $pipeline".Trim()
+        Write-Host $xcInput[0]
+        $xcArgs = $xcInput + @($pipeline)
         Write-Host "args to processor is $xcArgs"
-        #look into https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_splatting?view=powershell-7.5
-        java -cp "$cp" com.xmlcalabash.app.Main @xcArgs
+        & java -cp "$cp" com.xmlcalabash.app.Main @xcArgs
 
     }
 }
