@@ -95,13 +95,15 @@ function Download-GitHubRelease {
                 }
                 else {
                     $downloadUrl = $asset.browser_download_url
-               
+                    $outFile = (Join-Path $libPath $fileName)
                     # Download the asset
                     Write-Host "Downloading $fileName..."
-                    Invoke-WebRequest -Uri $downloadUrl -OutFile (Join-Path $libPath $fileName) -UseBasicParsing
+                    Invoke-WebRequest -Uri $downloadUrl -OutFile $outFile -UseBasicParsing
                     Write-Host "$fileName downloaded successfully.`n"
+                    #TODO don't assume ZIP
+                    Expand-Archive -Path $outFile -DestinationPath $libPath -Force
                     #TODO get actual version if "latest"
-                    #Prepare-Artifact -name $RepoName -version $tag
+                    
                 }
             }
 
@@ -132,7 +134,8 @@ function Prepare-Artifact {
         [string]$zipRoot = "$name-$version",
         #[string]$destFolderName = $name,
         [string]$extendedPath,
-        [string]$expectedHash
+        [string]$expectedHash,
+        [string]$libPath
     )
 
     $zipHash = Get-FileHash -Path $zipPath -Algorithm $hashAlgorithm

@@ -1,3 +1,4 @@
+# Probably should all be starting UpperCase
 param(
     $processing = "xproc",
     $processor = "xmlcalabash",
@@ -20,32 +21,44 @@ Import-Module ./polyglot -Force
 if ($processing -eq "xproc") {
     if ($processor -eq "xmlcalabash") {
 
-        $processorPath = "$localRepository\xmlcalabash-3.0.0-beta7"              
+        $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.0-beta7")
         
         #construct classpath
-        $cp = "$cp;$processorPath/*"
-       
+        $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
+      
+        $cpDelimiter = if($IsLinux -or $IsMacOS) {":"} else {";"}
+
         $paths | ForEach-Object {
             Get-ChildItem "$_" -Filter *.jar |
             ForEach-Object {
-                $cp = "$cp;$_"
+                $cp = "$cp$cpDelimiter$_"
             }
         }
 
         Get-ChildItem "$processorPath\lib" -Filter *.jar |
         ForEach-Object {
-            $cp = "$cp;$_"
+            $cp = "$cp$cpDelimiter$_"
         }
-        #Write-Host "ClassPath: $cp"
+        # Write-Host "ClassPath: $cp"
+        $xcArgs = @()
         # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
         if($inPort){
             $xcInput = @()
             foreach($enum in $inPort.GetEnumerator()) {
                 $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
             }
+            $xcArgs += $xcInput
         }
-        Write-Host $xcInput[0]
-        $xcArgs = $xcInput + @($pipeline)
+        if($outPort){
+            $xcOutput = @()
+            foreach($enum in $outPort.GetEnumerator()) {
+                $xcOutput += ("--output:$($enum.Key)=`"$($enum.Value)`"")                        
+            }
+            $xcArgs += $xcOutput
+        }
+        $xcArgs += @($pipeline)
+        # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
+        $PSNativeCommandArgumentPassing = 'Legacy'
         Write-Host "args to processor is $xcArgs"
         & java -cp "$cp" com.xmlcalabash.app.Main @xcArgs
 
