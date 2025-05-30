@@ -9,3 +9,8 @@ Goals:
 
 PowerXML currently includes the Polyglot Package Manager (PM), to support dependency management. Post MVP stage, this should become its own project.
 
+# Calling XProc 
+
+```powershell
+.\powerxml.ps1 -pipeline testixml_in.xpl -inPort @{'source'='input.txt';'grammar'='grammar.txt'} 
+```

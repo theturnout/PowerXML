@@ -3,9 +3,11 @@ param(
     $processing = "xproc",
     $processor = "xmlcalabash",
     $targetComposition = "oscal",
+    [switch]$inPipe, 
     $pipeline,
     [hashtable]$inPort,
-    [hashtable]$outPort
+    [hashtable]$outPort,
+    [array]$passthrough
 )
 $localRepository = "$HOME/.polyglotpm"
 #process bundle
@@ -56,6 +58,16 @@ if ($processing -eq "xproc") {
             }
             $xcArgs += $xcOutput
         }
+
+        #handle STDIN
+        if($inPipe){
+            $xcArgs += @("--pipe")
+        }
+
+        if($passthrough){
+            $xcArgs += $passthrough
+        }
+        
         $xcArgs += @($pipeline)
         # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
         $PSNativeCommandArgumentPassing = 'Legacy'
