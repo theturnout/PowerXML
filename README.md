@@ -4,7 +4,7 @@ PowerXML is a set of PowerShell CmdLets that ease use of various XML tooling.
 
 Goals:
 
-- Provide a unified front end for various XML processors (specificially XProc processors)
+- Provide a unified front end for various XML processors (specifically XProc processors)
 - Automatically gather required dependencies to perform a task
 
 PowerXML currently includes the Polyglot Package Manager (PPM), to support dependency management. Post MVP stage, this should become its own project.
@@ -16,15 +16,8 @@ PowerXML currently includes the Polyglot Package Manager (PPM), to support depen
 
 ## Installing the module
 
-First install the InstallModuleFromGitHub module, which will make updating PowerXML easier.
-
-```powershell
-Install-Module -Name InstallModuleFromGitHub -RequiredVersion 0.3
-```
-
-```powershell
-Install-ModuleFromGitHub -GitHubRepo theturnout/PowerXML -Branch develop
-```
+1. Clone this repo
+2. From a PowerShell prompt enter `Import-Module ./PowerXML -Force`, assuming PowerXML is where the local version is running.
 
 ## Transform-XML CmdLet
 

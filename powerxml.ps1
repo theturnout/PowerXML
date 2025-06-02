@@ -1,4 +1,23 @@
 # Probably should all be starting UpperCase
+<#
+.SYNOPSIS
+Transforms inputs using XML technologies
+.PARAMETER processing
+The kind of processing to run. Default xproc.
+.PARAMETER processor
+The specific processor to use.
+.PARAMETER targetComposition
+The target composition in the SBOM to use to determine which packages are required to run the code.
+.PARAMETER inPipe
+Whether to use the STDIN to pass data to the pipeline's default port.
+.PARAMETER inPort
+A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
+.PARAMETER inPort
+A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.xml}
+.PARAMETER passthrough
+An array of parameters passed directly to the processor.
+.
+#>
 function Transform-Xml {
     [CmdletBinding()]
     param(
@@ -14,9 +33,9 @@ function Transform-Xml {
     )
     $localRepository = "$HOME/.polyglotpm"
     #process bundle
-    Import-Module ./polyglot -Force
+    Import-Module "$PSScriptRoot/polyglot" -Force
     [array]$paths = Copy-SoftwareComposition `
-        -sbomPath .\sbom.xml `
+        -sbomPath "$PSScriptRoot\sbom.xml" `
         -targetComposition $targetComposition `
         -localRepository  $localRepository | Select-Object -Unique    
     
