@@ -16,7 +16,8 @@ A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.x
 A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.xml}
 .PARAMETER passthrough
 An array of parameters passed directly to the processor.
-.
+.PARAMETER passthroughJava
+An array of parameters passed directly to the Java JVM.
 #>
 function Transform-Xml {
     [CmdletBinding()]
@@ -29,7 +30,9 @@ function Transform-Xml {
         $pipeline,
         [hashtable]$inPort,
         [hashtable]$outPort,
-        [array]$passthrough
+        [string]$catalog,
+        [array]$passthrough,
+        [array]$passthroughJava
     )
     $localRepository = "$HOME/.polyglotpm"
     #process bundle
@@ -49,21 +52,17 @@ function Transform-Xml {
         
             #construct classpath
             $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
-      
+     
+            $cp += Get-PXClassPath -paths $paths
+
             $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-
-            $paths | ForEach-Object {
-                Get-ChildItem "$_" -Filter *.jar |
-                ForEach-Object {
-                    $cp = "$cp$cpDelimiter$_"
-                }
-            }
-
             Get-ChildItem "$processorPath\lib" -Filter *.jar |
             ForEach-Object {
                 $cp = "$cp$cpDelimiter$_"
             }
-            # Write-Host "ClassPath: $cp"
+
+
+            Write-Host "ClassPath: $cp"
             $xcArgs = @()
             # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
             if ($inPort) {
@@ -81,6 +80,10 @@ function Transform-Xml {
                 $xcArgs += $xcOutput
             }
 
+            if ($catalog) {
+                $xcArgs += @("--catalog:`"$catalog`"")
+            }
+
             #handle STDIN
             if ($inPipe) {
                 $xcArgs += @("--pipe")
@@ -94,8 +97,49 @@ function Transform-Xml {
             # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
             $PSNativeCommandArgumentPassing = 'Legacy'
             Write-Host "args to processor is $xcArgs"
-            & java -cp "$cp" com.xmlcalabash.app.Main @xcArgs
+            & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
 
         }
+    }
+}
+
+function Get-PXClassPath {
+    param(
+        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
+        [array]$paths
+    ) 
+    $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
+
+    $cp = @()
+    $paths | ForEach-Object {
+        Get-ChildItem "$_" -Filter *.jar |
+        ForEach-Object {
+            Write-Host "Adding $($_.FullName) to classpath"
+            $cp = "$cp$cpDelimiter$_"
+        }
+    }
+    return $cp
+}
+function New-Bundle {
+    [CmdletBinding()]
+    param(        
+        $targetComposition = "oscal",
+        $bundleName
+    )
+    
+    $localRepository = "$HOME/.polyglotpm"
+    #process bundle
+    Import-Module "$PSScriptRoot/polyglot" -Force
+    [array]$paths = Copy-SoftwareComposition `
+        -sbomPath "$PSScriptRoot\sbom.xml" `
+        -targetComposition $targetComposition `
+        -localRepository  $localRepository | Select-Object -Unique    
+
+    $bundlePath = Join-Path $localRepository "bundles"        
+    New-Item -Path $bundlePath -Name $bundleName -ItemType Directory -Force | Out-Null
+
+    $paths | ForEach-Object {      
+        Write-Host "Copying software composition from $($_) to $bundlePath"                  
+        Copy-Item -Path "$($_)\*.jar" -Destination $bundlePath -Force -Recurse
     }
 }
