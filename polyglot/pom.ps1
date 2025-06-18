@@ -1,5 +1,4 @@
-﻿
-# Hashtable to track resolved POMs
+﻿# Hashtable to track resolved POMs
 # May not work well now that it's global.
 $resolvedPOMs = @{}
 
@@ -54,12 +53,25 @@ function Resolve-Dependencies {
 
     [xml]$pomXml = Get-Content -Path $pomFile
     $dependencies = $pomXml.project.dependencies.dependency
-    	
+    
+    #Found doesn't work
+    $versionMap = @{}
+    foreach ($dep in $pomXml.project.dependencyManagement.dependencies.dependency) {
+        $key = "$($dep.groupId):$($dep.artifactId)"
+        $versionMap[$key] = $dep.version
+        Write-Host "Found managed dependency: $key with version $($dep.version)"
+    }
+
+    if($pomXML.project.parent){
+        Write-Warning "Parent POM detected. Resolving parent dependencies is not currently supported."
+    }
+
     foreach ($dep in $dependencies) {
         $depGroupId = $dep.groupId
         $depArtifactId = $dep.artifactId
         $depVersion = $dep.version
         $depScope = $dep.scope
+
 
         # If no scope is specified, it defaults to "compile"
         if (-not $depScope) {

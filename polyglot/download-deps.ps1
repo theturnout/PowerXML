@@ -44,68 +44,101 @@ function Get-GitHubReleases {
 
 # Function to download a specific or latest release
 function Download-GitHubRelease {
+    [CmdletBinding()]
     param (
         [string]$RepoOwner,
         [string]$RepoName,
         [string]$Version = "latest",
         [string[]]$Assets = @(), # Array of specific asset names to download
-        [string]$libPath
+        [string]$libPath,
+        [string]$ApiPath = "https://api.github.com"
     )
     Write-Verbose $Assets.ToString()
     # Define the API URL
     if ($Version -eq "latest") {
-        $url = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"        
+        $url = "$apiPath/repos/$RepoOwner/$RepoName/releases/latest"        
     }
     else {
-        $url = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$Version"
+        $url = "$apiPath/repos/$RepoOwner/$RepoName/releases/tags/$Version"
     }
 
     try {
         # Make the API request
         $response = Invoke-RestMethod -Uri $url -UseBasicParsing
-
         # Verify assets are available
         if ($response.assets -and $response.assets.Count -gt 0) {
             $tag = $response.tag_name
-
+            
             # Filter assets to download
             $assetsToDownload = if ($Assets.Count -eq 0) {
                 $response.assets
-            } else {
+            }
+            else {
+                # Filter is inadaequate, we need to check full name
                 $response.assets | Where-Object { ($Assets | ForEach-Object { $_ -f (($Version -eq "latest") ? $tag : $Version) }) -contains $_.name }
             }
-
+            
             if ($assetsToDownload.Count -eq 0) {
                 Write-Warning "No matching assets found to download."
                 return
-            } else {
+            }
+            else {
                 Write-Verbose "Available releases for $RepoOwner/$RepoName :`n"
             }
-
+            $paths = @() 
             foreach ($asset in $assetsToDownload) {
+                Write-Host $asset.name | Out-Host
                 $isDownloaded = $false                
                 $fileName = $asset.name
                 
                 if (Test-Path (Join-Path $libPath $fileName)) {
-                   $isDownloaded = $true
+                    $isDownloaded = $true
                 }                
+                
+                $outFile = (Join-Path $libPath $fileName)
 
                 if ($isDownloaded) {
                     Write-Verbose "$fileName (Already downloaded)"
                 }
                 else {
                     $downloadUrl = $asset.browser_download_url
-                    $outFile = (Join-Path $libPath $fileName)
-                    # Download the asset
-                    Write-Host "Downloading $fileName..."
+                    Write-Host "Downloading $fileName from $downloadUrl..."
                     Invoke-WebRequest -Uri $downloadUrl -OutFile $outFile -UseBasicParsing
                     Write-Host "$fileName downloaded successfully.`n"
-                    #TODO don't assume ZIP
+                }
+                # todo check file size, if not equal to asset size, delete and re-download
+
+                # Don't assume ZIP
+                $extension = [System.IO.Path]::GetExtension($fileName)
+                $extract = $true
+                if ($extension -ne ".zip") {
+                    Write-Warning "The file $fileName is not a ZIP archive. Skipping extraction."
+                    $extract = $false
+                }
+                $fileNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+                $directoryPath = (Join-Path $libPath $fileNameWithoutExtension)
+                if (Test-Path $directoryPath -PathType Container) {
+                    Write-Verbose "Directory $directoryPath already exists, skipping extraction."
+                    $extract = $false
+                }
+                if ($extract) {
                     Expand-Archive -Path $outFile -DestinationPath $libPath -Force
-                    #TODO get actual version if "latest"
-                    
+                    #TODO get actual version if "latest"                    
+                    # Check if the ZIP file was already extracted
+                    # Pwsh does not generate a wrapper, so this will be specific to the artifact,
+                    # thankfully, MorganaXProc and xmlcalbash both have a directory with the same name as the ZIP file.
+                    # can have existing directory with same name as ZIP file
+                    $fileNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
+                }
+                $directoryExists = Test-Path $directoryPath -PathType Container
+                if ($directoryExists) {
+                    $paths += @($directoryPath)
+                } else {
+                    Write-Error "Logic error"
                 }
             }
+            Write-Host $paths
+            return $paths
 
         }
         else {
@@ -170,19 +203,19 @@ function DownloadArtifactNew {
         #    GetLatestVersion()
     }
 
-            DownloadArtifact -name $name -version $version -urlTemplate $asset.RepoUri
+    DownloadArtifact -name $name -version $version -urlTemplate $asset.RepoUri
     #see if this artifact is in our data list
-  #  if($Data.assets[$name]){
-  #      $asset = $Data.assets[$name]
-  #      if($asset.RepoType -eq "GitHub"){
-  #          Download-GitHubRelease -RepoOwner $asset.RepoOwner `
-  #          -RepoName $asset.RepoName `
-  #          -Version $version `
-  #          -Assets @($asset.AssetString)
-  #      } else {
-  #          DownloadArtifact -name $name -version $version -urlTemplate $asset.RepoUri
-  #      }
-  #  }
+    #  if($Data.assets[$name]){
+    #      $asset = $Data.assets[$name]
+    #      if($asset.RepoType -eq "GitHub"){
+    #          Download-GitHubRelease -RepoOwner $asset.RepoOwner `
+    #          -RepoName $asset.RepoName `
+    #          -Version $version `
+    #          -Assets @($asset.AssetString)
+    #      } else {
+    #          DownloadArtifact -name $name -version $version -urlTemplate $asset.RepoUri
+    #      }
+    #  }
 
 }
 
