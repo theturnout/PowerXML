@@ -1,0 +1,25 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "PowerShell: Launch Script",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "Transform-XML",
+            "args": ["-pipeline", "./powerxml/testixml_in.xpl"],            
+            "cwd": "${workspaceFolder}"
+        }
+    ,
+        {
+            "name": "PowerShell: Debug Pester Tests",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "Invoke-Pester",
+            "args": ["-Script", "${workspaceFolder}/powerxml.tests.ps1", "-Output", "Detailed"],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

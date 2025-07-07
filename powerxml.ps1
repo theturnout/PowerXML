@@ -28,6 +28,7 @@ function Transform-Xml {
         [switch]$inPipe,
         [Parameter(Mandatory = $true)] 
         $pipeline,
+        [hashtable]$options,
         [hashtable]$inPort,
         [hashtable]$outPort,
         [string]$catalog,
@@ -93,13 +94,31 @@ function Transform-Xml {
                 $xcArgs += $passthrough
             }
         
+            if($options) {
+                $xcOptions = @()
+                foreach ($enum in $options.GetEnumerator()) {
+                        $xcOptions += ("$($enum.Key)=$($enum.Value)")
+                }
+                $xcArgs += $xcOptions
+            }
+
+            # Handle CmdLet params
+            # Calabash has trace, warn, error, if you want to use them, use passthrough
+            if($Verbose){
+                $xcArgs += @("--verbosity:info")
+                $xcArgs += @("--explain")
+            } elseif($Debug) {
+                $xcArgs += @("--verbosity:debug")
+                $xcArgs += @("--explain")
+            }
+
             $xcArgs += @($pipeline)
             # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
             $PSNativeCommandArgumentPassing = 'Legacy'
             Write-Host "args to processor is $xcArgs"
-            & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
-
-        }
+            $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+return $output
+        } 
     }
 }
 
