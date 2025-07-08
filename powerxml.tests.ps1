@@ -30,7 +30,7 @@ Describe 'Transform-Xml' {
 
     It 'Should be running with xmlcalabash processor' {        
         [xml]$xmlContent = Transform-Xml -Pipeline "$PSScriptRoot\test_data\processor.xpl"        
-        $xmlContent.DocumentElement.Attributes["xproc-engine-name"].Value | Should -Be "XML Calabash"
+        $xmlContent.supplemental."xproc-engine-name" | Should -Be "XML Calabash"
     } 
 
     It 'Should generate output to file' {
@@ -38,12 +38,12 @@ Describe 'Transform-Xml' {
         Transform-Xml -Pipeline "$PSScriptRoot\test_data\xmlhelloWorld.xpl" -OutPort @{"result" = $outputFileName}
         Test-Path $outputFileName | Should -Be $true
         [xml]$xmlContent = Get-Content $outputFileName -Raw
-        $xmlContent.DocumentElement.InnerText | Should -Be "Hello, World!"
+        $xmlContent.content | Should -Be "Hello, World!"
     } 
 
     It 'Should generate output to stdout' {    
         [xml]$xmlContent =Transform-Xml -Pipeline "$PSScriptRoot\test_data\xmlhelloWorld.xpl" 
-        $xmlContent.DocumentElement.InnerText | Should -Be "Hello, World!"
+        $xmlContent.content | Should -Be "Hello, World!"
     } 
     It 'Should passthrough input' {
         $inputFileName = Join-Path $global:TestDir "input.xml"
