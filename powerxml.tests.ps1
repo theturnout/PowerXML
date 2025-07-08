@@ -5,12 +5,14 @@ Import-Module "$PSScriptRoot\powerxml.psm1" -Force
 
 BeforeAll {
     # TODO: clear .polyglotpm cache
-    $global:TestDir = Join-Path $env:TEMP "pester-test-$(New-Guid)"
-    New-Item -ItemType Directory -Path $TestDir | Out-Null
+    #$global:TestDir = Join-Path $env:TEMP "pester-test-$(New-Guid)"
+    #New-Item -ItemType Directory -Path $TestDir | Out-Null
+    $global:TestDir = "TestDrive:\"
+
 }
 
 AfterAll {
-    Remove-Item -Path $global:TestDir -Recurse -Force
+  #  Remove-Item -Path $global:TestDir -Recurse -Force
 }
 
 Describe 'Transform-Xml' {
@@ -34,7 +36,7 @@ Describe 'Transform-Xml' {
     } 
 
     It 'Should generate output to file' {
-        $outputFileName = Join-Path $global:TestDir "output.xml"
+        $outputFileName = "$TestDrive/output.xml"
         Transform-Xml -Pipeline "$PSScriptRoot\test_data\xmlhelloWorld.xpl" -OutPort @{"result" = $outputFileName}
         Test-Path $outputFileName | Should -Be $true
         [xml]$xmlContent = Get-Content $outputFileName -Raw
@@ -46,8 +48,8 @@ Describe 'Transform-Xml' {
         $xmlContent.content | Should -Be "Hello, World!"
     } 
     It 'Should passthrough input' {
-        $inputFileName = Join-Path $global:TestDir "input.xml"
-        $outputFileName = Join-Path $global:TestDir "output.xml"
+        $inputFileName = "$TestDrive/input.xml"
+        $outputFileName = "$TestDrive/output.xml"
         [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
         $xmlInput.Save($inputFileName)
         Transform-Xml -Pipeline "$PSScriptRoot\test_data\xmlpassthru.xpl" -InPort @{"source" = $inputFileName} -OutPort @{"result" = $outputFileName}
