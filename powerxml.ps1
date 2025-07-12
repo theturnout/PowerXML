@@ -49,10 +49,16 @@ function Transform-Xml {
     if ($processing -eq "xproc") {
         if ($processor -eq "xmlcalabash") {
 
-            $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.0-beta7")
-        
+            #attempt to find the xmlcalabash processor
+            $processorPath = $paths | Where-Object { $_ -like "*xmlcalabash*" } 
+            if (-not $processorPath) {
+                Write-Host "Fatal: xmlcalabash processor not found in paths $paths" -ForegroundColor Red
+                exit 1
+            }
+
+            $jarName = Split-Path -Leaf $processorPath
             #construct classpath
-            $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
+            $cp = "$processorPath/$jarName.jar"
      
             $cp += Get-PXClassPath -paths $paths
 

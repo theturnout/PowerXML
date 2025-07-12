@@ -3,4 +3,4 @@
 . "$PSScriptRoot\pom.ps1"
 . "$PSScriptRoot\purl.ps1"
 
-Export-ModuleMember -Function Copy-SoftwareComposition 
+Export-ModuleMember -Function Copy-SoftwareComposition
