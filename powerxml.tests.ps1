@@ -58,6 +58,17 @@ Describe 'Transform-Xml' {
         $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
     }
 
+It 'Should pass input via object' {
+        $inputFileName = "$TestDrive/input.xml"
+        $outputFileName = "$TestDrive/output.xml"
+        [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
+        $xmlInput.Save($inputFileName)
+        Transform-Xml -Pipeline "$PSScriptRoot\test_data\xmlpassthru.xpl" -InPort @{"source" = $inputFileName} -OutPort @{"result" = $outputFileName}
+        Test-Path $outputFileName | Should -Be $true        
+        [xml]$xmlOutput = Get-Content $outputFileName -Raw
+        $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
+}
+
   # It 'Should place output on the pipeline' {
   #     $outputFileName = Join-Path $global:TestDir "output2.xml"
   #     [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"

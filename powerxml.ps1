@@ -27,7 +27,7 @@ function Transform-Xml {
         $targetComposition = "oscal",
         [switch]$inPipe,
         [Parameter(Mandatory = $true)] 
-        $pipeline,
+        $pipeline,        
         [hashtable]$options,
         [hashtable]$inPort,
         [hashtable]$outPort,
@@ -48,85 +48,235 @@ function Transform-Xml {
 
     if ($processing -eq "xproc") {
         if ($processor -eq "xmlcalabash") {
-
-            #attempt to find the xmlcalabash processor
-            $processorPath = $paths | Where-Object { $_ -like "*xmlcalabash*" } 
-            if (-not $processorPath) {
-                Write-Host "Fatal: xmlcalabash processor not found in paths $paths" -ForegroundColor Red
-                exit 1
-            }
-
-            $jarName = Split-Path -Leaf $processorPath
-            #construct classpath
-            $cp = "$processorPath/$jarName.jar"
-     
-            $cp += Get-PXClassPath -paths $paths
-
-            $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-            Get-ChildItem "$processorPath\lib" -Filter *.jar |
-            ForEach-Object {
-                $cp = "$cp$cpDelimiter$_"
-            }
-
-
-            Write-Host "ClassPath: $cp"
-            $xcArgs = @()
-            # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
-            if ($inPort) {
-                $xcInput = @()
-                foreach ($enum in $inPort.GetEnumerator()) {
-                    $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
-                }
-                $xcArgs += $xcInput
-            }
-            if ($outPort) {
-                $xcOutput = @()
-                foreach ($enum in $outPort.GetEnumerator()) {
-                    $xcOutput += ("--output:$($enum.Key)=`"$($enum.Value)`"")                        
-                }
-                $xcArgs += $xcOutput
-            }
-
-            if ($catalog) {
-                $xcArgs += @("--catalog:`"$catalog`"")
-            }
-
-            #handle STDIN
-            if ($inPipe) {
-                $xcArgs += @("--pipe")
-            }
-
-            if ($passthrough) {
-                $xcArgs += $passthrough
-            }
-        
-            if($options) {
-                $xcOptions = @()
-                foreach ($enum in $options.GetEnumerator()) {
-                        $xcOptions += ("$($enum.Key)=$($enum.Value)")
-                }
-                $xcArgs += $xcOptions
-            }
-
-            # Handle CmdLet params
-            # Calabash has trace, warn, error, if you want to use them, use passthrough
-            if($Verbose){
-                $xcArgs += @("--verbosity:info")
-                $xcArgs += @("--explain")
-            } elseif($Debug) {
-                $xcArgs += @("--verbosity:debug")
-                $xcArgs += @("--explain")
-            }
-
-            $xcArgs += @($pipeline)
-            # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
-            $PSNativeCommandArgumentPassing = 'Legacy'
-            Write-Host "args to processor is $xcArgs"
-            $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
-return $output
-        } 
+            Invoke-XmlCalabash `
+                -paths $paths `
+                -inPipe:$inPipe `
+                -pipeline $pipeline `
+                -options $options `
+                -inPort $inPort `
+                -outPort $outPort `
+                -catalog $catalog `
+                -passthrough $passthrough `
+                -passthroughJava $passthroughJava
+        }
     }
 }
+function Invoke-XmlCalabash {
+    [CmdletBinding()]
+    param(
+        [array]$paths,        
+        [switch]$inPipe,
+        [Parameter(Mandatory = $true)] 
+        $pipeline,        
+        [hashtable]$options,
+        [hashtable]$inPort,
+        [hashtable]$outPort,
+        [string]$catalog,
+        [array]$passthrough,
+        [array]$passthroughJava
+    )
+    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.0-beta7")
+        
+    #construct classpath
+    $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
+         
+    $cp += Get-PXClassPath -paths $paths
+
+    $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
+    Get-ChildItem "$processorPath\lib" -Filter *.jar |
+    ForEach-Object {
+        $cp = "$cp$cpDelimiter$_"
+    }
+
+    Write-Verbose "ClassPath: $cp"
+    $xcArgs = @()
+    # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
+    if ($inPort) {
+        $xcInput = @()
+        foreach ($enum in $inPort.GetEnumerator()) {
+            $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
+        }
+        $xcArgs += $xcInput
+    }
+    if ($outPort) {
+        $xcOutput = @()
+        foreach ($enum in $outPort.GetEnumerator()) {
+            $xcOutput += ("--output:$($enum.Key)=`"$($enum.Value)`"")                        
+        }
+        $xcArgs += $xcOutput
+    }
+
+    if ($catalog) {
+        $xcArgs += @("--catalog:`"$catalog`"")
+    }
+
+    #handle STDIN
+    if ($inPipe) {
+        $xcArgs += @("--pipe")
+    }
+
+    if ($passthrough) {
+        $xcArgs += $passthrough
+    }
+        
+    if ($options) {
+        $xcOptions = @()
+        foreach ($enum in $options.GetEnumerator()) {
+            $xcOptions += ("$($enum.Key)=$($enum.Value)")
+        }
+        $xcArgs += $xcOptions
+    }
+
+    # Handle CmdLet params
+    # Calabash has trace, warn, error, if you want to use them, use passthrough
+    if ($Verbose) {
+        $xcArgs += @("--verbosity:info")
+        $xcArgs += @("--explain")
+    }
+    elseif ($Debug) {
+        $xcArgs += @("--verbosity:debug")
+        $xcArgs += @("--explain")
+    }
+
+    
+    # create configuration file
+    # Define the XML content as a here-string
+    $xmlContent = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<cc:xml-calabash xmlns:cc="https://xmlcalabash.com/ns/configuration" version="1.0">
+    <cc:mimetype content-type="text/plain" extensions="ixml" />
+</cc:xml-calabash>
+"@
+    
+    # Create a temporary file with .xml extension
+    $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xml")
+    
+    # Write the XML content to the temporary file using UTF-8 encoding
+    [System.IO.File]::WriteAllText($tempFile, $xmlContent, [System.Text.Encoding]::UTF8)
+    
+    # Output the path to the temporary file
+    Write-Output $tempFile
+
+    if ($tempFile) {
+        $xcArgs += @("--configuration:`"$tempFile`"")
+    }
+        
+    # Parameterize merging of stdout and stderr
+    $mergeOutput = $true
+    if ($PSBoundParameters.ContainsKey('MergeOutput')) {
+        $mergeOutput = $MergeOutput
+    }
+            
+    $xcArgs += @($pipeline)
+    # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
+    $PSNativeCommandArgumentPassing = 'Legacy'
+    Write-Verbose "args to processor is $xcArgs"
+    if ($mergeOutput) {
+        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+    }
+    else {
+        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+    }
+    return $output
+} 
+
+
+function Invoke-MorganaXProc {
+    [CmdletBinding()]
+    param(
+        [array]$paths,        
+        [switch]$inPipe,
+        [Parameter(Mandatory = $true)] 
+        $pipeline,        
+        [hashtable]$options,
+        [hashtable]$inPort,
+        [hashtable]$outPort,
+        [string]$catalog,
+        [array]$passthrough,
+        [array]$passthroughJava
+    )
+    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.0-beta7")
+        
+    #construct classpath
+    $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
+         
+    $cp += Get-PXClassPath -paths $paths
+
+    $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
+    Get-ChildItem "$processorPath\lib" -Filter *.jar |
+    ForEach-Object {
+        $cp = "$cp$cpDelimiter$_"
+    }
+
+    Write-Verbose "ClassPath: $cp"
+    $xcArgs = @()
+    # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
+    if ($inPort) {
+        $xcInput = @()
+        foreach ($enum in $inPort.GetEnumerator()) {
+            $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
+        }
+        $xcArgs += $xcInput
+    }
+    if ($outPort) {
+        $xcOutput = @()
+        foreach ($enum in $outPort.GetEnumerator()) {
+            $xcOutput += ("--output:$($enum.Key)=`"$($enum.Value)`"")                        
+        }
+        $xcArgs += $xcOutput
+    }
+
+    if ($catalog) {
+        $xcArgs += @("--catalog:`"$catalog`"")
+    }
+
+    #handle STDIN
+    if ($inPipe) {
+        $xcArgs += @("--pipe")
+    }
+
+    if ($passthrough) {
+        $xcArgs += $passthrough
+    }
+        
+    if ($options) {
+        $xcOptions = @()
+        foreach ($enum in $options.GetEnumerator()) {
+            $xcOptions += ("$($enum.Key)=$($enum.Value)")
+        }
+        $xcArgs += $xcOptions
+    }
+
+    # Handle CmdLet params
+    # Calabash has trace, warn, error, if you want to use them, use passthrough
+    if ($Verbose) {
+        $xcArgs += @("--verbosity:info")
+        $xcArgs += @("--explain")
+    }
+    elseif ($Debug) {
+        $xcArgs += @("--verbosity:debug")
+        $xcArgs += @("--explain")
+    }
+
+    $xcArgs += @($pipeline)
+    # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
+    $PSNativeCommandArgumentPassing = 'Legacy'
+    Write-Verbose "args to processor is $xcArgs"
+
+    # Parameterize merging of stdout and stderr
+    $mergeOutput = $true
+    if ($PSBoundParameters.ContainsKey('MergeOutput')) {
+        $mergeOutput = $MergeOutput
+    }
+
+    if ($mergeOutput) {
+        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+    }
+    else {
+        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+    }
+    return $output
+} 
 
 function Get-PXClassPath {
     param(
@@ -145,6 +295,7 @@ function Get-PXClassPath {
     }
     return $cp
 }
+
 function New-Bundle {
     [CmdletBinding()]
     param(        
