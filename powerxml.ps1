@@ -75,10 +75,10 @@ function Invoke-XmlCalabash {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.0-beta7")
-        
+    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.10")
+
     #construct classpath
-    $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
+    $cp = "$processorPath/xmlcalabash-app-3.0.10.jar"
          
     $cp += Get-PXClassPath -paths $paths
 
@@ -144,7 +144,7 @@ function Invoke-XmlCalabash {
     $xmlContent = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <cc:xml-calabash xmlns:cc="https://xmlcalabash.com/ns/configuration" version="1.0">
-    <cc:mimetype content-type="text/plain" extensions="ixml" />
+    <cc:mimetype content-type="text/plain" extensions="ixml inp" />
 </cc:xml-calabash>
 "@
     
@@ -152,11 +152,8 @@ function Invoke-XmlCalabash {
     $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xml")
     
     # Write the XML content to the temporary file using UTF-8 encoding
-    [System.IO.File]::WriteAllText($tempFile, $xmlContent, [System.Text.Encoding]::UTF8)
+    $null = [System.IO.File]::WriteAllText($tempFile, $xmlContent, [System.Text.Encoding]::UTF8)
     
-    # Output the path to the temporary file
-    Write-Output $tempFile
-
     if ($tempFile) {
         $xcArgs += @("--configuration:`"$tempFile`"")
     }
@@ -195,11 +192,11 @@ function Invoke-MorganaXProc {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.0-beta7")
+    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.10")
         
     #construct classpath
-    $cp = "$processorPath/xmlcalabash-app-3.0.0-beta7.jar"
-         
+    $cp = "$processorPath/xmlcalabash-app-3.0.10.jar"
+
     $cp += Get-PXClassPath -paths $paths
 
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
@@ -268,6 +265,8 @@ function Invoke-MorganaXProc {
     if ($PSBoundParameters.ContainsKey('MergeOutput')) {
         $mergeOutput = $MergeOutput
     }
+    # try to force UTF-8
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 
     if ($mergeOutput) {
         $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
@@ -275,6 +274,7 @@ function Invoke-MorganaXProc {
     else {
         $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
     }
+    Write-Host $output
     return $output
 } 
 
