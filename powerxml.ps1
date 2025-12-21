@@ -90,11 +90,17 @@ function Invoke-XmlCalabash {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.24")
+    # look for the xmlcalabash path
+    $processorPath = $paths | Where-Object {
+        $_ -like "*xmlcalabash*"
+    }
+    if ( -not $processorPath) {
+        throw "Could not find xmlcalabash processor in software composition paths"
+    }    
 
     #construct classpath
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    $cp = "$processorPath/xmlcalabash-app-3.0.24.jar$cpDelimiter"
+    $cp = "$processorPath/*$cpDelimiter"
 
     $cp += Get-PXClassPath -paths $paths -shortenClassPath
 
@@ -107,7 +113,7 @@ function Invoke-XmlCalabash {
     #        ForEach-Object {
     #            $cp = "$cp$cpDelimiter$_"
     #        }
-    $cp = "$cp$cpDelimiter$processorPath/lib/*.jar$cpDelimiter$processorPath/extra/*.jar"
+    $cp = "$cp$cpDelimiter$processorPath/lib/*$cpDelimiter$processorPath/extra/*"
     Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
