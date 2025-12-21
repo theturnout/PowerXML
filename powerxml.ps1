@@ -24,7 +24,7 @@ function Transform-Xml {
     param(
         $processing = "xproc",
         $processor = "xmlcalabash",
-        $targetComposition = "oscal",
+        $targetComposition = "pester-tests",
         [switch]$inPipe,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
@@ -35,17 +35,17 @@ function Transform-Xml {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $localRepository = "$HOME/.polyglotpm"
-    #process bundle
     Import-Module "$PSScriptRoot/polyglot" -Force
+    $localRepository = Get-LocalRepositoryPath
+    #process bundle
     [array]$paths = Copy-SoftwareComposition `
         -sbomPath "$PSScriptRoot\sbom.xml" `
         -targetComposition $targetComposition `
-        -localRepository  $localRepository | Select-Object -Unique    
+        -localRepository $localRepository | Select-Object -Unique    
     
     #$cp = $paths -join ";"
     #convert paths to ClassPath format
-
+    # TODO: copy CmdLet params a la m365-scripts
     if ($processing -eq "xproc") {
         if ($processor -eq "xmlcalabash") {
             Invoke-XmlCalabash `
@@ -58,6 +58,21 @@ function Transform-Xml {
                 -catalog $catalog `
                 -passthrough $passthrough `
                 -passthroughJava $passthroughJava
+        }
+        elseif ($processor -eq "morganaxproc") {
+            Invoke-MorganaXProc `
+                -paths $paths `
+                -inPipe:$inPipe `
+                -pipeline $pipeline `
+                -options $options `
+                -inPort $inPort `
+                -outPort $outPort `
+                -catalog $catalog `
+                -passthrough $passthrough `
+                -passthroughJava $passthroughJava
+        }
+        else {
+            throw "Unsupported processor $processor for processing type $processing"
         }
     }
 }
@@ -75,19 +90,24 @@ function Invoke-XmlCalabash {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.10")
+    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.24")
 
     #construct classpath
-    $cp = "$processorPath/xmlcalabash-app-3.0.10.jar"
-         
-    $cp += Get-PXClassPath -paths $paths
-
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    Get-ChildItem "$processorPath\lib" -Filter *.jar |
-    ForEach-Object {
-        $cp = "$cp$cpDelimiter$_"
-    }
+    $cp = "$processorPath/xmlcalabash-app-3.0.24.jar$cpDelimiter"
 
+    $cp += Get-PXClassPath -paths $paths -shortenClassPath
+
+    #    Get-ChildItem "$processorPath\lib" -Filter *.jar |
+    #        ForEach-Object {
+    #            $cp = "$cp$cpDelimiter$_"
+    #        }
+    #
+    #    Get-ChildItem "$processorPath\extra" -Filter *.jar |
+    #        ForEach-Object {
+    #            $cp = "$cp$cpDelimiter$_"
+    #        }
+    $cp = "$cp$cpDelimiter$processorPath/lib/*.jar$cpDelimiter$processorPath/extra/*.jar"
     Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
@@ -144,7 +164,7 @@ function Invoke-XmlCalabash {
     $xmlContent = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <cc:xml-calabash xmlns:cc="https://xmlcalabash.com/ns/configuration" version="1.0">
-    <cc:mimetype content-type="text/plain" extensions="ixml inp" />
+    <cc:mimetype content-type="text/plain" extensions="ixml pdf inp" />
 </cc:xml-calabash>
 "@
     
@@ -168,6 +188,9 @@ function Invoke-XmlCalabash {
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
     Write-Verbose "args to processor is $xcArgs"
+
+    [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
+
     if ($mergeOutput) {
         $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
     }
@@ -192,18 +215,18 @@ function Invoke-MorganaXProc {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.10")
+    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.24")
         
     #construct classpath
-    $cp = "$processorPath/xmlcalabash-app-3.0.10.jar"
+    $cp = "$processorPath/xmlcalabash-app-3.0.24.jar"
 
     $cp += Get-PXClassPath -paths $paths
 
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
     Get-ChildItem "$processorPath\lib" -Filter *.jar |
-    ForEach-Object {
-        $cp = "$cp$cpDelimiter$_"
-    }
+        ForEach-Object {
+            $cp = "$cp$cpDelimiter$_"
+        }
 
     Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
@@ -261,13 +284,14 @@ function Invoke-MorganaXProc {
     Write-Verbose "args to processor is $xcArgs"
 
     # Parameterize merging of stdout and stderr
-    $mergeOutput = $true
+    $mergeOutput = $false
+
     if ($PSBoundParameters.ContainsKey('MergeOutput')) {
         $mergeOutput = $MergeOutput
     }
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-
+    Write-Host "Invoking java -cp $cp com.xmlcalabash.app.Main $xcArgs"
     if ($mergeOutput) {
         $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
     }
@@ -281,41 +305,48 @@ function Invoke-MorganaXProc {
 function Get-PXClassPath {
     param(
         [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [array]$paths
+        [array]$paths,
+        [switch]$shortenClassPath
     ) 
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-
+    Write-Host $paths
     $cp = @()
-    $paths | ForEach-Object {
-        Get-ChildItem "$_" -Filter *.jar |
-        ForEach-Object {
-            Write-Host "Adding $($_.FullName) to classpath"
-            $cp = "$cp$cpDelimiter$_"
+    if ($shortenClassPath) {
+        $cp = "$($paths -join $cpDelimiter)"
+        return $cp
+    }
+    else {
+        $paths | ForEach-Object {
+            Get-ChildItem "$_" -Filter *.jar |
+                ForEach-Object {
+                    Write-Host "Adding $($_.FullName) to classpath"
+                    $cp = "$cp$cpDelimiter$_"
+                }
+            }
+            return $cp
         }
     }
-    return $cp
-}
 
-function New-Bundle {
-    [CmdletBinding()]
-    param(        
-        $targetComposition = "oscal",
-        $bundleName
-    )
+    function New-Bundle {
+        [CmdletBinding()]
+        param(        
+            $targetComposition = "oscal",
+            $bundleName
+        )
     
-    $localRepository = "$HOME/.polyglotpm"
-    #process bundle
-    Import-Module "$PSScriptRoot/polyglot" -Force
-    [array]$paths = Copy-SoftwareComposition `
-        -sbomPath "$PSScriptRoot\sbom.xml" `
-        -targetComposition $targetComposition `
-        -localRepository  $localRepository | Select-Object -Unique    
+        $localRepository = Get-LocalRepositoryPath
+        #process bundle
+        Import-Module "$PSScriptRoot/polyglot" -Force
+        [array]$paths = Copy-SoftwareComposition `
+            -sbomPath "$PSScriptRoot\sbom.xml" `
+            -targetComposition $targetComposition `
+            -localRepository $localRepository | Select-Object -Unique    
 
-    $bundlePath = Join-Path $localRepository "bundles"        
-    New-Item -Path $bundlePath -Name $bundleName -ItemType Directory -Force | Out-Null
+        $bundlePath = Join-Path $localRepository "bundles"        
+        New-Item -Path $bundlePath -Name $bundleName -ItemType Directory -Force | Out-Null
 
-    $paths | ForEach-Object {      
-        Write-Host "Copying software composition from $($_) to $bundlePath"                  
-        Copy-Item -Path "$($_)\*.jar" -Destination $bundlePath -Force -Recurse
+        $paths | ForEach-Object {      
+            Write-Host "Copying software composition from $($_) to $bundlePath"                  
+            Copy-Item -Path "$($_)\*.jar" -Destination $bundlePath -Force -Recurse
+        }
     }
-}
