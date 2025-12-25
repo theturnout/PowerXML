@@ -1,7 +1,7 @@
 # Pester tests for powerxml module
 
 # Import the module
-Import-Module "$PSScriptRoot\powerxml.psm1" -Force
+Import-Module "$PSScriptRoot\powerxml.psm1" -Force -DisableNameChecking
 
 BeforeAll {
     # TODO: clear .polyglotpm cache

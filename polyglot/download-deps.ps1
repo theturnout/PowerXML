@@ -74,8 +74,8 @@ function Download-GitHubRelease {
                 $response.assets
             }
             else {
-                # Filter is inadaequate, we need to check full name
-                $response.assets | Where-Object { ($Assets | ForEach-Object { $_ -f (($Version -eq "latest") ? $tag : $Version) }) -contains $_.name }
+                # Filter assets to only include those specified in the Assets array
+                $response.assets | Where-Object { $Assets -contains $_.name }
             }
             
             if ($assetsToDownload.Count -eq 0) {
@@ -109,10 +109,11 @@ function Download-GitHubRelease {
                 # todo check file size, if not equal to asset size, delete and re-download
 
                 # Don't assume ZIP
+                #check if extension is anything Expand-Archive can handle                
                 $extension = [System.IO.Path]::GetExtension($fileName)
                 $extract = $true
                 if ($extension -ne ".zip") {
-                    Write-Warning "The file $fileName is not a ZIP archive. Skipping extraction."
+                    Write-Verbose "The file $fileName is not a ZIP archive. Skipping extraction."
                     $extract = $false
                 }
                 $fileNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
@@ -133,7 +134,8 @@ function Download-GitHubRelease {
                 $directoryExists = Test-Path $directoryPath -PathType Container
                 if ($directoryExists) {
                     $paths += @($directoryPath)
-                } else {
+                }
+                else {
                     Write-Error "Logic error"
                 }
             }
@@ -239,11 +241,11 @@ function DownloadArtifact {
     $zipPath = Join-Path $libPath "$name-$version.zip"
     $unzipPath = Join-Path $libPath "$name-$version"
     if (-not (Test-Path $unzipPath)) {
-        Write-Output "Downloading $name-$version ..."
+        Write-Host "Downloading $name-$version ..."
 
         # Add version to urlTemplate
         $downloadUrl = $urlTemplate -f $version
-        Write-Output "Remote site is $downloadUrl"
+        Write-Host "Remote site is $downloadUrl"
         Invoke-WebRequest -UserAgent "Wget" -Uri $downloadUrl -OutFile $zipPath
         $zipHash = Get-FileHash -Path $zipPath -Algorithm $hashAlgorithm
         # Print the calculated hash
@@ -261,7 +263,7 @@ function DownloadArtifact {
         # Remove-Item -Path $zipPath -Force
     }
     else {
-        Write-Output "$name $version already downloaded."
+        Write-Host "$name $version already downloaded."
     }
 }
 
@@ -288,7 +290,7 @@ function DownloadSaxon {
         #    } | Remove-Item -Force
     }
     else {
-        Write-Output "Saxon $edition $version already downloaded."
+        Write-Host "Saxon $edition $version already downloaded."
     }
 }
 

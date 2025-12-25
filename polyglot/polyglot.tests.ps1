@@ -9,7 +9,7 @@ BeforeAll {
     #$global:TestDir = Join-Path $env:TEMP "pester-test-$(New-Guid)"
     #New-Item -ItemType Directory -Path $TestDir | Out-Null
     $global:TestDir = "TestDrive:\"
-    Import-Module "$PSScriptRoot/../polyglot"
+    Import-Module "$PSScriptRoot/../polyglot" -DisableNameChecking
 
     $env:polyglotpm = (Join-Path $global:TestDir "polyglotpm")
     New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
@@ -36,7 +36,9 @@ Describe 'SBOM Support' {
     }
 
     It 'Should pass on valid SBOM file' {
-        Test-SBOM ".\test_data\sbom.xml" | Should -Be $true
+        # load the xml file
+        $sbom = [xml](Get-Content -Path "test_data\sbom.xml")
+        Test-SBOM $sbom | Should -Be $true
     }
 
     It 'Should parse a PURL' {

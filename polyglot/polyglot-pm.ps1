@@ -26,12 +26,16 @@ function Copy-SoftwareComposition {
     [string] $sbomPath,
     [Parameter(Mandatory = $true)]
     [string] $targetComposition,
-    [string] $localRepository = "$HOME/.polyglotpm"    
+    [string] $localRepository = (Get-LocalRepositoryPath)    
   )
 
+  # Assumes cycloneDX XML 1.X
   $file = Resolve-Path $sbomPath
   [xml]$xmlContent = Get-Content -Path $file
-  # TODO schema validation
+  if (-not (Test-SBOM $xmlContent)) {
+    Write-Host "Fatal: Invalid SBOM file $sbomPath" -ForegroundColor Red
+    exit 1
+  }
   $bom = $xmlContent.bom;
   $composition = $bom.compositions.composition | Where-Object { $_."bom-ref" -eq $targetComposition }
   if (!$composition) {
@@ -55,14 +59,22 @@ function Copy-SoftwareComposition {
     }
 
     # $purl | Format-List
-    # Write-Output "------------------------------------"
+    # Write-Host "------------------------------------"
     # try to download files
     $paths = Get-PackageFromPurl -purl $purl
     
     return $paths 
   }
 } 
-function Get-PackageFromPurl {
+<#
+.SYNOPSIS
+Downloads a package and its dependencies based on the provided Package URL (PURL)
+.PARAMETER purl
+The Package URL object representing the package to download.
+.RETURNS
+A object with the Purl and local path of the downloaded package.
+  #>
+function Get-PackageFromPurl {  
   param(
     [Parameter(Mandatory = $true)]
     $purl
@@ -81,7 +93,7 @@ function Get-PackageFromPurl {
       $repoUrl = "https://repo1.maven.org/maven2"
     }
     
-    $downloadPath = "$localRepository"
+    $downloadPath = Get-LocalRepositoryPath
     
     
     $paths = @("$downloadPath\$artifactId-$version")
@@ -108,23 +120,37 @@ function Get-PackageFromPurl {
     $filePath = $purl.QualifiersParsed["filename"]
     DownloadArtifact -name $purl.Name -version $purl.Version `
       -urlTemplate "https://sourceforge.net/projects/$name/files/$filePath" `
-      -libPath $localRepository    
+      -libPath (Get-LocalRepositoryPath)
   }
   elseif ($purl.Type -eq "github") {
-   $paths += Download-GitHubRelease -RepoOwner $purl.Namespace `
+    $paths += Download-GitHubRelease -RepoOwner $purl.Namespace `
       -RepoName $purl.Name `
       -Version $purl.Version `
-      -LibPath $localRepository
+      -LibPath (Get-LocalRepositoryPath)
   }
   elseif ($purl.Type -eq "codeberg") {
-  $paths +=  Download-GitHubRelease -RepoOwner $purl.Namespace `
+    if ($purl.QualifiersParsed["filename"]) {
+      $fileName = $purl.QualifiersParsed["filename"]
+    }
+    
+    $paths += Download-GitHubRelease -RepoOwner $purl.Namespace `
       -RepoName $purl.Name `
       -Version $purl.Version `
-      -LibPath $localRepository `
-      -ApiPath "https://codeberg.org/api/v1"
+      -LibPath (Get-LocalRepositoryPath) `
+      -ApiPath "https://codeberg.org/api/v1" `
+      -Assets @($fileName)
   }
   else {
     Write-Host "$($purl.Type) not supported yet" -ForegroundColor Yellow				
   }
   return $paths
+}
+
+function Get-LocalRepositoryPath {
+  if ($env:polyglotpm) {
+    return $env:polyglotpm
+  }
+  else {
+    return "$HOME/.polyglotpm"
+  }
 }

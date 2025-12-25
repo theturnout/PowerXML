@@ -1,9 +1,3 @@
-# Import the main module if needed
-# . "$PSScriptRoot\download-deps.ps1"
-# . "$PSScriptRoot\polyglot-pm.ps1"
-# . "$PSScriptRoot\purl.ps1"
-# . "$PSScriptRoot\sbom.ps1"
-
 BeforeAll {
     # TODO: clear .polyglotpm cache
     #$global:TestDir = Join-Path $env:TEMP "pester-test-$(New-Guid)"
@@ -22,12 +16,12 @@ AfterAll {
 Describe 'File downloading' {
     It 'Should have Download a GitHub Release' {
         #https://github.com/Election-Tech-Initiative/electionguard/releases/tag/v2.1
-        Download-GitHubRelease -repoOwner "Election-Tech-Initiative" -repoName "electionguard" `
-            -Version "v2.1" `
-            -assets @("EG_2_0_data_serialization_spec_0_0_1.pdf") `
+        Download-GitHubRelease -repoOwner "HiltonRoscoe" -repoName "exchangerxml" `
+            -Version "v4-beta2" `
+            -assets @("xngr-editor.zip") `
             -libPath $global:TestDir
         
-        Test-Path "$global:TestDir\EG_2_0_data_serialization_spec_0_0_1.pdf" | Should -Be $true
+        Test-Path "$global:TestDir\xngr-editor.zip" | Should -Be $true
     }
 
     It 'Should have Download a Specific file from codeberg' {
@@ -35,6 +29,12 @@ Describe 'File downloading' {
         $purl = ConvertFrom-PkgUri "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip"        
         $paths = Get-PackageFromPurl -purl $purl
         Test-Path "$env:polyglotpm\xmlcalabash-3.0.24.zip" | Should -Be $true
+    }
+    It 'Produces a path when file is already downloaded from codeberg' {
+        #https://github.com/Election-Tech-Initiative/electionguard/releases/tag/v2.1
+        $purl = ConvertFrom-PkgUri "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip"        
+        $paths = Get-PackageFromPurl -purl $purl
+        $paths | Should -Not -Be $null
     }
     
     It 'Should have Download a Specific file from Maven' {
