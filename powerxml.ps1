@@ -221,33 +221,34 @@ function Invoke-MorganaXProc {
         [array]$passthrough,
         [array]$passthroughJava
     )
-    $processorPath = (Join-Path $localRepository "xmlcalabash-3.0.24")
+    $processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8")
         
     #construct classpath
-    $cp = "$processorPath/xmlcalabash-app-3.0.24.jar"
+    $cp = "$processorPath/MorganaXProc-IIIse.jar"
 
     $cp += Get-PXClassPath -paths $paths
 
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    Get-ChildItem "$processorPath\lib" -Filter *.jar |
+    Get-ChildItem "$processorPath\MorganaXProc-IIIse_lib" -Filter *.jar |
         ForEach-Object {
             $cp = "$cp$cpDelimiter$_"
         }
-
-    Write-Verbose "ClassPath: $cp"
+        
+    # Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
+    $xcArgs += @($pipeline)
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
     if ($inPort) {
         $xcInput = @()
         foreach ($enum in $inPort.GetEnumerator()) {
-            $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
+            $xcInput += ("-input:$($enum.Key)=`"$($enum.Value)`"")                        
         }
         $xcArgs += $xcInput
     }
     if ($outPort) {
         $xcOutput = @()
         foreach ($enum in $outPort.GetEnumerator()) {
-            $xcOutput += ("--output:$($enum.Key)=`"$($enum.Value)`"")                        
+            $xcOutput += ("-output:$($enum.Key)=`"$($enum.Value)`"")                        
         }
         $xcArgs += $xcOutput
     }
@@ -268,7 +269,7 @@ function Invoke-MorganaXProc {
     if ($options) {
         $xcOptions = @()
         foreach ($enum in $options.GetEnumerator()) {
-            $xcOptions += ("$($enum.Key)=$($enum.Value)")
+            $xcOptions += ("-option:$($enum.Key)=$($enum.Value)")
         }
         $xcArgs += $xcOptions
     }
@@ -276,33 +277,33 @@ function Invoke-MorganaXProc {
     # Handle CmdLet params
     # Calabash has trace, warn, error, if you want to use them, use passthrough
     if ($Verbose) {
-        $xcArgs += @("--verbosity:info")
-        $xcArgs += @("--explain")
+        $xcArgs += @("-debug")        
     }
     elseif ($Debug) {
-        $xcArgs += @("--verbosity:debug")
-        $xcArgs += @("--explain")
+        $xcArgs += @("-debug")
     }
 
-    $xcArgs += @($pipeline)
+    #TODO parameterize
+    $xcArgs += @("-silent")
+
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
     Write-Verbose "args to processor is $xcArgs"
 
     # Parameterize merging of stdout and stderr
-    $mergeOutput = $false
+    $mergeOutput = $true
 
     if ($PSBoundParameters.ContainsKey('MergeOutput')) {
         $mergeOutput = $MergeOutput
     }
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-    Write-Host "Invoking java -cp $cp com.xmlcalabash.app.Main $xcArgs"
+    Write-Host "Invoking java -cp $cp com.xml_project.morganaxproc3.XProcEngine $xcArgs"
     if ($mergeOutput) {
-        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
     }
     else {
-        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
     }
     Write-Host $output
     return $output

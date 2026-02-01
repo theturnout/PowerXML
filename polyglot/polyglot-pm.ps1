@@ -123,7 +123,7 @@ function Get-PackageFromPurl {
       -libPath (Get-LocalRepositoryPath)
   }
   elseif ($purl.Type -eq "github") {
-    $paths += Download-GitHubRelease -RepoOwner $purl.Namespace `
+    $paths += Copy-GitHubRelease -RepoOwner $purl.Namespace `
       -RepoName $purl.Name `
       -Version $purl.Version `
       -LibPath (Get-LocalRepositoryPath)
@@ -133,7 +133,7 @@ function Get-PackageFromPurl {
       $fileName = $purl.QualifiersParsed["filename"]
     }
     
-    $paths += Download-GitHubRelease -RepoOwner $purl.Namespace `
+    $paths += Copy-GitHubRelease -RepoOwner $purl.Namespace `
       -RepoName $purl.Name `
       -Version $purl.Version `
       -LibPath (Get-LocalRepositoryPath) `

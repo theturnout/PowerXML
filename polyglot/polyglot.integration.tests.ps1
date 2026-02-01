@@ -16,12 +16,12 @@ AfterAll {
 Describe 'File downloading' {
     It 'Should have Download a GitHub Release' {
         #https://github.com/Election-Tech-Initiative/electionguard/releases/tag/v2.1
-        Download-GitHubRelease -repoOwner "HiltonRoscoe" -repoName "exchangerxml" `
-            -Version "v4-beta2" `
-            -assets @("xngr-editor.zip") `
+        Copy-GitHubRelease -repoOwner "nineml" -repoName "coffeefilter" `
+            -Version "3.3.4" `
+            -assets @("coffeefilter-3.3.4.zip") `
             -libPath $global:TestDir
         
-        Test-Path "$global:TestDir\xngr-editor.zip" | Should -Be $true
+        Test-Path "$global:TestDir\coffeefilter-3.3.4.zip" | Should -Be $true
     }
 
     It 'Should have Download a Specific file from codeberg' {
@@ -43,6 +43,6 @@ Describe 'File downloading' {
         $paths = Get-PackageFromPurl -purl $purl
         Test-Path "$env:polyglotpm\xmlresolver-6.0.12" | Should -Be $true
     }
-    # Add more specific tests for Download-GitHubRelease here
+    # Add more specific tests for Copy-GitHubRelease here
 }
 

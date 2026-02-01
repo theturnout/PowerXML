@@ -43,7 +43,7 @@ function Get-GitHubReleases {
 }
 
 # Function to download a specific or latest release
-function Download-GitHubRelease {
+function Copy-GitHubRelease {
     [CmdletBinding()]
     param (
         [string]$RepoOwner,
@@ -161,7 +161,7 @@ function Download-GitHubRelease {
 }
 
 # Prepare artifact for storage
-function Prepare-Artifact {
+function Build-Artifact {
     param (
         [string]$name,
         [string]$version,
@@ -210,7 +210,7 @@ function DownloadArtifactNew {
     #  if($Data.assets[$name]){
     #      $asset = $Data.assets[$name]
     #      if($asset.RepoType -eq "GitHub"){
-    #          Download-GitHubRelease -RepoOwner $asset.RepoOwner `
+    #          Copy-GitHubRelease -RepoOwner $asset.RepoOwner `
     #          -RepoName $asset.RepoName `
     #          -Version $version `
     #          -Assets @($asset.AssetString)
@@ -317,7 +317,7 @@ function DownloadSaxon {
 ##             } else {
 ##                 $version = if ($args.Count -ge 4) { $args[3] } else { "latest" }
 ##                 $assets = if ($args.Count -gt 4) { $args[4..($args.Count - 1)] } else { @() }
-##                 Download-GitHubRelease -RepoOwner $args[1] -RepoName $args[2] -Version $version -Assets $assets
+##                 Copy-GitHubRelease -RepoOwner $args[1] -RepoName $args[2] -Version $version -Assets $assets
 ##             }
 ##         }
 ##         default {
