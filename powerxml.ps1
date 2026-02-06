@@ -33,7 +33,9 @@ function Transform-Xml {
         [hashtable]$outPort,
         [string]$catalog,
         [array]$passthrough,
-        [array]$passthroughJava
+        [array]$passthroughJava,
+        [bool]$MergeOutput = $true,
+        [hashtable]$Namespace
     )
     Import-Module "$PSScriptRoot/polyglot" -Force
     $localRepository = Get-LocalRepositoryPath
@@ -42,39 +44,92 @@ function Transform-Xml {
         -sbomPath "$PSScriptRoot\sbom.xml" `
         -targetComposition $targetComposition `
         -localRepository $localRepository | Select-Object -Unique    
-    
+
+    # Detect if $pipeline is XML (raw XML string or .NET XML type)
+    $pipelinePath = $null
+    $tempPipelineFile = $null
+    $isXml = $false
+    if ($null -ne $pipeline) {
+        # Check for .NET XML types
+        $xmlTypes = @(
+            'System.Xml.XmlDocument',
+            'System.Xml.Linq.XDocument',
+            'System.Xml.Linq.XElement',
+            'System.Xml.XmlElement',
+            'System.Xml.XmlNode'
+        )
+        if ($xmlTypes -contains $pipeline.GetType().FullName) {
+            $isXml = $true
+        }
+        elseif ($pipeline -is [string]) {
+            try {
+                [xml]$tryXml = $pipeline
+                if ($tryXml.DocumentElement -or $tryXml.Root) {
+                    $isXml = $true
+                }
+            }
+            catch {
+                $isXml = $false
+            }
+        }
+    }
+    if ($isXml) {
+        # Write XML to temp file
+        $tempPipelineFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xpl")
+        if ($pipeline -is [string]) {
+            #Output without BOM
+            [System.IO.File]::WriteAllText($tempPipelineFile, $pipeline)
+        }
+        else {
+            # .NET XML object
+            $pipeline.OuterXml | Set-Content -Path $tempPipelineFile -Encoding UTF8
+        }
+        $pipelinePath = $tempPipelineFile
+    }
+    else {
+        $pipelinePath = $pipeline
+    }
+
     #$cp = $paths -join ";"
     #convert paths to ClassPath format
     # TODO: copy CmdLet params a la m365-scripts
     if ($processing -eq "xproc") {
         if ($processor -eq "xmlcalabash") {
-            Invoke-XmlCalabash `
+            return Invoke-XmlCalabash `
                 -paths $paths `
                 -inPipe:$inPipe `
-                -pipeline $pipeline `
+                -pipeline $pipelinePath `
                 -options $options `
                 -inPort $inPort `
                 -outPort $outPort `
                 -catalog $catalog `
                 -passthrough $passthrough `
-                -passthroughJava $passthroughJava
+                -passthroughJava $passthroughJava `
+                -MergeOutput $MergeOutput `
+                -Namespace $Namespace
         }
         elseif ($processor -eq "morganaxproc") {
-            Invoke-MorganaXProc `
+            return Invoke-MorganaXProc `
                 -paths $paths `
                 -inPipe:$inPipe `
-                -pipeline $pipeline `
+                -pipeline $pipelinePath `
                 -options $options `
                 -inPort $inPort `
                 -outPort $outPort `
                 -catalog $catalog `
                 -passthrough $passthrough `
-                -passthroughJava $passthroughJava
+                -passthroughJava $passthroughJava `
+                -MergeOutput $MergeOutput `
+                -Namespace $Namespace
         }
         else {
             throw "Unsupported processor $processor for processing type $processing"
         }
     }
+    # Clean up temp file if created
+    #  if ($null -ne $tempPipelineFile -and (Test-Path $tempPipelineFile)) {
+    #      Remove-Item -Path $tempPipelineFile -Force -ErrorAction SilentlyContinue
+    #  }
 }
 function Invoke-XmlCalabash {
     [CmdletBinding()]
@@ -88,7 +143,9 @@ function Invoke-XmlCalabash {
         [hashtable]$outPort,
         [string]$catalog,
         [array]$passthrough,
-        [array]$passthroughJava
+        [array]$passthroughJava,
+        [bool]$MergeOutput = $true,
+        [hashtable]$Namespace
     )
     # look for the xmlcalabash path
     $processorPath = $paths | Where-Object {
@@ -152,6 +209,13 @@ function Invoke-XmlCalabash {
         }
         $xcArgs += $xcOptions
     }
+    if ($Namespace) {
+        $nsArgs = @()
+        foreach ($enum in $Namespace.GetEnumerator()) {
+            $nsArgs += ("--namespace:$($enum.Key)=$($enum.Value)")
+        }
+        $xcArgs += $nsArgs
+    }
 
     # Handle CmdLet params
     # Calabash has trace, warn, error, if you want to use them, use passthrough
@@ -184,20 +248,14 @@ function Invoke-XmlCalabash {
         $xcArgs += @("--configuration:`"$tempFile`"")
     }
         
-    # Parameterize merging of stdout and stderr
-    $mergeOutput = $true
-    if ($PSBoundParameters.ContainsKey('MergeOutput')) {
-        $mergeOutput = $MergeOutput
-    }
-            
     $xcArgs += @($pipeline)
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
-    Write-Verbose "args to processor is $xcArgs"
+    #Write-Verbose "args to processor is $xcArgs"
 
     [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 
-    if ($mergeOutput) {
+    if ($MergeOutput) {
         $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
     }
     else {
@@ -219,7 +277,9 @@ function Invoke-MorganaXProc {
         [hashtable]$outPort,
         [string]$catalog,
         [array]$passthrough,
-        [array]$passthroughJava
+        [array]$passthroughJava,
+        [bool]$MergeOutput = $true,
+        [hashtable]$Namespace
     )
     $processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8")
         
@@ -273,6 +333,13 @@ function Invoke-MorganaXProc {
         }
         $xcArgs += $xcOptions
     }
+    if ($Namespace) {
+        $nsArgs = @()
+        foreach ($enum in $Namespace.GetEnumerator()) {
+            $nsArgs += ("-namespace:$($enum.Key)=$($enum.Value)")
+        }
+        $xcArgs += $nsArgs
+    }
 
     # Handle CmdLet params
     # Calabash has trace, warn, error, if you want to use them, use passthrough
@@ -288,18 +355,12 @@ function Invoke-MorganaXProc {
 
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
-    Write-Verbose "args to processor is $xcArgs"
+    #Write-Verbose "args to processor is $xcArgs"
 
-    # Parameterize merging of stdout and stderr
-    $mergeOutput = $true
-
-    if ($PSBoundParameters.ContainsKey('MergeOutput')) {
-        $mergeOutput = $MergeOutput
-    }
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-    Write-Host "Invoking java -cp $cp com.xml_project.morganaxproc3.XProcEngine $xcArgs"
-    if ($mergeOutput) {
+    #Write-Host "Invoking java -cp $cp com.xml_project.morganaxproc3.XProcEngine $xcArgs"
+    if ($MergeOutput) {
         $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
     }
     else {
