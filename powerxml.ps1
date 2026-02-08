@@ -1,3 +1,66 @@
+<#
+.PARAMETER InputObject
+The input to resolve, which can be an XML object or a string containing XML content.
+.PARAMETER Extension
+The file extension to use for the temporary file if the input is XML content. Default is "xml".
+.PARAMETER targetEncoding
+The target encoding to use when writing the XML content to a temporary file. Default is "utf-8". Supported encodings include "utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", and "us-ascii".
+.NOTES
+Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path) will be returned as-is.
+#>
+function Resolve-XmlInput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        $InputObject,
+        [string]$Extension = "xml",
+        [ValidationSet("utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", "us-ascii")]        
+        [string]$targetEncoding = "utf-8"
+    )
+    $xmlTypes = @(
+        'System.Xml.XmlDocument',
+        'System.Xml.Linq.XDocument',
+        'System.Xml.Linq.XElement',
+        'System.Xml.XmlElement',
+        'System.Xml.XmlNode'
+    )
+    $isXml = $false
+    if ($null -ne $InputObject) {
+        if ($xmlTypes -contains $InputObject.GetType().FullName) {
+            $isXml = $true
+        }
+        elseif ($InputObject -is [string]) {
+            try {
+                [xml]$tryXml = $InputObject
+                if ($tryXml.DocumentElement -or $tryXml.Root) {
+                    $isXml = $true
+                }
+            }
+            catch {
+                $isXml = $false
+            }
+        }
+    }
+    if ($isXml) {
+        $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".$Extension")
+        if ($InputObject -is [string]) {            
+            if ($targetEncoding) {
+                [System.IO.File]::WriteAllText($tempFile, $tryXml.OuterXml, [System.Text.Encoding]::GetEncoding($targetEncoding))
+            }
+            else {
+                # Default to UTF-8 without BOM                 
+                [System.IO.File]::WriteAllText($tempFile, $tryXml.OuterXml)
+            }            
+        }
+        else {
+            $InputObject.OuterXml | Set-Content -Path $tempFile -Encoding UTF8
+        }
+        return $tempFile
+    }
+    else {
+        return $InputObject
+    }
+}
 # Probably should all be starting UpperCase
 <#
 .SYNOPSIS
@@ -45,54 +108,16 @@ function Transform-Xml {
         -targetComposition $targetComposition `
         -localRepository $localRepository | Select-Object -Unique    
 
-    # Detect if $pipeline is XML (raw XML string or .NET XML type)
-    $pipelinePath = $null
-    $tempPipelineFile = $null
-    $isXml = $false
-    if ($null -ne $pipeline) {
-        # Check for .NET XML types
-        $xmlTypes = @(
-            'System.Xml.XmlDocument',
-            'System.Xml.Linq.XDocument',
-            'System.Xml.Linq.XElement',
-            'System.Xml.XmlElement',
-            'System.Xml.XmlNode'
-        )
-        if ($xmlTypes -contains $pipeline.GetType().FullName) {
-            $isXml = $true
-        }
-        elseif ($pipeline -is [string]) {
-            try {
-                [xml]$tryXml = $pipeline
-                if ($tryXml.DocumentElement -or $tryXml.Root) {
-                    $isXml = $true
-                }
-            }
-            catch {
-                $isXml = $false
-            }
-        }
-    }
-    if ($isXml) {
-        # Write XML to temp file
-        $tempPipelineFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xpl")
-        if ($pipeline -is [string]) {
-            #Output without BOM
-            [System.IO.File]::WriteAllText($tempPipelineFile, $pipeline)
-        }
-        else {
-            # .NET XML object
-            $pipeline.OuterXml | Set-Content -Path $tempPipelineFile -Encoding UTF8
-        }
-        $pipelinePath = $tempPipelineFile
-    }
-    else {
-        $pipelinePath = $pipeline
-    }
+    $pipelinePath = Resolve-XmlInput -InputObject $pipeline -Extension "xpl"
 
-    #$cp = $paths -join ";"
-    #convert paths to ClassPath format
-    # TODO: copy CmdLet params a la m365-scripts
+    $inPortProcessed = $null
+    if ($inPort) {
+        $inPortProcessed = @{}
+        foreach ($key in $inPort.Keys) {
+            $val = $inPort[$key]
+            $inPortProcessed[$key] = Resolve-XmlInput -InputObject $val -Extension "xml"
+        }
+    }
     if ($processing -eq "xproc") {
         if ($processor -eq "xmlcalabash") {
             return Invoke-XmlCalabash `
@@ -100,7 +125,7 @@ function Transform-Xml {
                 -inPipe:$inPipe `
                 -pipeline $pipelinePath `
                 -options $options `
-                -inPort $inPort `
+                -inPort $inPortProcessed `
                 -outPort $outPort `
                 -catalog $catalog `
                 -passthrough $passthrough `
@@ -114,7 +139,7 @@ function Transform-Xml {
                 -inPipe:$inPipe `
                 -pipeline $pipelinePath `
                 -options $options `
-                -inPort $inPort `
+                -inPort $inPortProcessed `
                 -outPort $outPort `
                 -catalog $catalog `
                 -passthrough $passthrough `

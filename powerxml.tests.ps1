@@ -21,7 +21,7 @@ Describe 'Transform-Xml' {
     Context "Run for each XProc processor" -ForEach @(
         @{Name = "xmlcalabash"; EngineName = "XML Calabash" }, @{Name = "morganaxproc"; EngineName = "MorganaXProc-IIIse" }
     ) {
-        It "$($_.Name) - Reimport module" -ForEach {
+        It "$($_.Name) - Reimport module" {
             Import-Module "$PSScriptRoot\powerxml.psm1" -Force -DisableNameChecking
         }
         It "$($_.Name) - Should exist as a function" {
@@ -67,7 +67,7 @@ Describe 'Transform-Xml' {
             $xmlContent = Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot\test_data\xmlhelloWorld.xpl" 
             ([xml]$xmlContent).content | Should -Be "Hello, World!"
         } 
-        It "$($_.Name) - Should passthrough input" {
+        It "$($_.Name) - Should passthrough input via file" {
             $inputFileName = "$TestDrive/input.xml"
             $outputFileName = "$TestDrive/output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
@@ -79,11 +79,9 @@ Describe 'Transform-Xml' {
         }
 
         It "$($_.Name) - Should pass input via object" {
-            $inputFileName = "$TestDrive/input.xml"
             $outputFileName = "$TestDrive/output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
-            $xmlInput.Save($inputFileName)
-            Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot\test_data\xmlpassthru.xpl" -InPort @{"source" = $inputFileName } -OutPort @{"result" = $outputFileName }
+            Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot\test_data\xmlpassthru.xpl" -InPort @{"source" = $xmlInput } -OutPort @{"result" = $outputFileName }
             Test-Path $outputFileName | Should -Be $true        
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -92,14 +90,15 @@ Describe 'Transform-Xml' {
             $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
             Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ name = "value" } | Should -BeLike "*Hello, value!"
         }
-        #  It 'Should handle option:Q{http://some-namespace}opt=5+3' {
-        #      $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
-        #      Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'Q{http://some-namespace}opt' = "5+3" } | Should -BeLike "*Hello, 5+3!"
-        #  }
-        #  It 'Should handle option:pre:opt=42' {
-        #      $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
-        #      Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = 42 } | Should -BeLike "*Hello, 42!"
-        #  }
+        It 'Should handle option:Q{http://some-namespace}opt=5+3' {
+            $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
+            Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'Q{http://some-namespace}opt' = "5+3" } | Should -BeLike "*Hello, 5+3!"
+        }
+        It 'Should handle option:pre:opt=42' {
+            $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
+            $namespaces = @{ pre = "http://example.com/pre" }
+            Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = 42 } | Should -BeLike "*Hello, 42!"
+        }
         #  It 'Should handle option:pre:opt=?40+2' {
         #      $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
         #      Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = '?40+2' } | Should -BeLike "*Hello, ?40+2!"
