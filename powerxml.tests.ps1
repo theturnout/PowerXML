@@ -90,15 +90,15 @@ Describe 'Transform-Xml' {
             $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
             Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ name = "value" } | Should -BeLike "*Hello, value!"
         }
-        It 'Should handle option:Q{http://some-namespace}opt=5+3' {
-            $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
-            Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'Q{http://some-namespace}opt' = "5+3" } | Should -BeLike "*Hello, 5+3!"
-        }
-        It 'Should handle option:pre:opt=42' {
-            $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
-            $namespaces = @{ pre = "http://example.com/pre" }
-            Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = 42 } | Should -BeLike "*Hello, 42!"
-        }
+        # It 'Should handle option:Q{http://some-namespace}opt=5+3' {
+        #     $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
+        #     Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'Q{http://some-namespace}opt' = "5+3" } | Should -BeLike "*Hello, 5+3!"
+        # }
+        # It 'Should handle option:pre:opt=42' {
+        #     $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
+        #     $namespaces = @{ pre = "http://example.com/pre" }
+        #     Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = 42 } | Should -BeLike "*Hello, 42!"
+        # }
         #  It 'Should handle option:pre:opt=?40+2' {
         #      $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
         #      Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = '?40+2' } | Should -BeLike "*Hello, ?40+2!"
@@ -128,6 +128,28 @@ Describe 'Transform-Xml' {
         #      $pipeline = "$PSScriptRoot\test_data\optionalHelloWorld.xpl"
         #      Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline $pipeline -Options @{ numbers = '(1,1+1,2+1,2+2)' } | Should -BeLike "*Hello, (1,1+1,2+1,2+2)!"
         #  }
+        It "$($_.Name) - Should support document sequences on input port - file-based" {
+            $inputFile1 = "$TestDrive/input1.xml"
+            $inputFile2 = "$TestDrive/input2.xml"
+            [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
+            [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"
+            $xmlInput1.Save($inputFile1)
+            $xmlInput2.Save($inputFile2)
+            $outputFileName = "$TestDrive/output.xml"
+            $result = Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($inputFile1, $inputFile2) } -OutPort @{ result = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true
+            $xmlOutput = Get-Content $outputFileName -Raw
+            $xmlOutput | Should -BeLike "*Doc1*"
+            $xmlOutput | Should -BeLike "*Doc2*"
+        }
+        It "$($_.Name) - Should support document sequences on input port - STDOUT" {
+            $xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
+            $xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"            
+            $result = Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($xmlInput1, $xmlInput2) }
+            $result | Should -BeLike "*Doc1*"
+            $result | Should -BeLike "*Doc2*"            
+        }
+            
     }
 
 

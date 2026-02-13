@@ -14,7 +14,7 @@ function Resolve-XmlInput {
         [Parameter(Mandatory = $true)]
         $InputObject,
         [string]$Extension = "xml",
-        [ValidationSet("utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", "us-ascii")]        
+        # [ValidationSet("utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", "us-ascii")]        
         [string]$targetEncoding = "utf-8"
     )
     $xmlTypes = @(
@@ -26,6 +26,13 @@ function Resolve-XmlInput {
     )
     $isXml = $false
     if ($null -ne $InputObject) {
+        if ($InputObject -is [array]) {
+            $resolvedArray = @()
+            foreach ($item in $InputObject) {
+                $resolvedArray += Resolve-XmlInput -InputObject $item -Extension $Extension -targetEncoding $targetEncoding
+            }
+            return $resolvedArray
+        }
         if ($xmlTypes -contains $InputObject.GetType().FullName) {
             $isXml = $true
         }
@@ -43,14 +50,13 @@ function Resolve-XmlInput {
     }
     if ($isXml) {
         $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".$Extension")
-        if ($InputObject -is [string]) {            
+        if ($InputObject -is [string]) {
             if ($targetEncoding) {
                 [System.IO.File]::WriteAllText($tempFile, $tryXml.OuterXml, [System.Text.Encoding]::GetEncoding($targetEncoding))
             }
             else {
-                # Default to UTF-8 without BOM                 
                 [System.IO.File]::WriteAllText($tempFile, $tryXml.OuterXml)
-            }            
+            }
         }
         else {
             $InputObject.OuterXml | Set-Content -Path $tempFile -Encoding UTF8
@@ -202,7 +208,16 @@ function Invoke-XmlCalabash {
     if ($inPort) {
         $xcInput = @()
         foreach ($enum in $inPort.GetEnumerator()) {
-            $xcInput += ("--input:$($enum.Key)=`"$($enum.Value)`"")                        
+            $portName = $enum.Key
+            $portVal = $enum.Value
+            if ($portVal -is [array]) {
+                foreach ($uri in $portVal) {
+                    $xcInput += ("--input:$portName=`"$uri`"")
+                }
+            }
+            else {
+                $xcInput += ("--input:$portName=`"$portVal`"")
+            }
         }
         $xcArgs += $xcInput
     }
