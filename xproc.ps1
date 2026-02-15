@@ -1,4 +1,30 @@
 
+function Get-MultiXmlDocuments {
+    param (
+        [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
+        [string]$StdOut
+    )
+    
+    # Regex pattern for XmlCalabash headers
+    $headerPattern = '^=== result :: \d+ :: .+?={10,}\r?\n'
+    $trailerPattern = '^={72,}\r?\n'
+    
+    # If no headers, treat as single document
+    if ($StdOut -notmatch $headerPattern) {
+        return , ($StdOut)
+    }
+    
+    # Split on headers, ignore empty entries
+    $docs = [regex]::Split($StdOut, $headerPattern) | Where-Object { $_.Trim() }
+    
+    # Remove trailers and parse each doc
+    $xmlDocs = foreach ($doc in $docs) {
+        # Remove trailing lines of '='
+        $clean = [regex]::Replace($doc, $trailerPattern, '', 'Multiline')
+        $clean
+    }
+    return $xmlDocs
+}   
 function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(
@@ -15,32 +41,6 @@ function Invoke-XmlCalabash {
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace
     )
-    function Get-MultiXmlDocuments {
-        param (
-            [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-            [string]$StdOut
-        )
-    
-        # Regex pattern for XmlCalabash headers
-        $headerPattern = '^=== result :: \d+ :: .+?={10,}\r?\n'
-        $trailerPattern = '^={72,}\r?\n'
-    
-        # If no headers, treat as single document
-        if ($StdOut -notmatch $headerPattern) {
-            return , ([xml]$StdOut)
-        }
-    
-        # Split on headers, ignore empty entries
-        $docs = [regex]::Split($StdOut, $headerPattern) | Where-Object { $_.Trim() }
-    
-        # Remove trailers and parse each doc
-        $xmlDocs = foreach ($doc in $docs) {
-            # Remove trailing lines of '='
-            $clean = [regex]::Replace($doc, $trailerPattern, '', 'Multiline')
-            [xml]$clean
-        }
-        return $xmlDocs
-    }   
     # look for the xmlcalabash path
     $processorPath = $paths | Where-Object {
         $_ -like "*xmlcalabash*"
@@ -168,7 +168,7 @@ function Invoke-XmlCalabash {
         return $output -join "`n"
     }
     else {
-        return $output
+        return $output | Get-MultiXmlDocuments
     }
 } 
 
@@ -287,7 +287,7 @@ function Invoke-MorganaXProc {
         $output = $output -join "`n"
     }
     Write-Host $output
-    return $output #| Get-MultiXmlDocuments
+    return $output
 } 
 
 function Get-PXClassPath {
