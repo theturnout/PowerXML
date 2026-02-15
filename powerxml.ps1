@@ -1,4 +1,5 @@
 . "$PSScriptRoot\xproc.ps1"
+. "$PSScriptRoot\xslt.ps1"
 
 <#
 .PARAMETER InputObject
@@ -99,6 +100,7 @@ function Transform-Xml {
         [switch]$inPipe,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
+        [Alias("parameters")]
         [hashtable]$options,
         [hashtable]$inPort,
         [hashtable]$outPort,
@@ -109,15 +111,9 @@ function Transform-Xml {
         [hashtable]$Namespace
     )
     Import-Module "$PSScriptRoot/polyglot" -Force
-    $localRepository = Get-LocalRepositoryPath
-    #process bundle
-    [array]$paths = Copy-SoftwareComposition `
-        -sbomPath "$PSScriptRoot\sbom.xml" `
-        -targetComposition $targetComposition `
-        -localRepository $localRepository | Select-Object -Unique    
-
+    
     $pipelinePath = Resolve-XmlInput -InputObject $pipeline -Extension "xpl"
-
+    
     $inPortProcessed = $null
     if ($inPort) {
         $inPortProcessed = @{}
@@ -127,6 +123,12 @@ function Transform-Xml {
         }
     }
     if ($processing -eq "xproc") {
+        $localRepository = Get-LocalRepositoryPath
+        #process bundle
+        [array]$paths = Copy-SoftwareComposition `
+            -sbomPath "$PSScriptRoot\sbom.xml" `
+            -targetComposition $targetComposition `
+            -localRepository $localRepository | Select-Object -Unique    
         if ($processor -eq "xmlcalabash") {
             return Invoke-XmlCalabash `
                 -paths $paths `
@@ -158,6 +160,69 @@ function Transform-Xml {
         else {
             throw "Unsupported processor $processor for processing type $processing"
         }
+    }
+    elseif ($processing -eq "xslt") {
+        # For XSLT processing:
+        # - pipeline parameter is the stylesheet
+        # - inPort with 'source' key is the input XML
+        # - outPort with 'result' key is the output file (optional)
+        # - options are XSLT parameters
+        
+        $stylesheetPath = Resolve-XmlInput -InputObject $pipeline -Extension "xsl"
+        
+        # Get input XML from inPort 'source' key, or use first value
+        $inputXmlPath = $null
+        if ($inPortProcessed -and $inPortProcessed.Count -gt 0) {
+            if ($inPortProcessed.ContainsKey('source')) {
+                $inputXmlPath = $inPortProcessed['source']
+            }
+            else {
+                $inputXmlPath = $inPortProcessed.Values | Select-Object -First 1
+            }
+        }
+        
+        if (-not $inputXmlPath) {
+            throw "XSLT processing requires input XML. Use -inPort @{source = 'input.xml'}"
+        }
+        
+        # Get output file from outPort 'result' key, or use first value
+        $outputFilePath = $null
+        if ($outPort -and $outPort.Count -gt 0) {
+            if ($outPort.ContainsKey('result')) {
+                $outputFilePath = $outPort['result']
+            }
+            else {
+                $outputFilePath = $outPort.Values | Select-Object -First 1
+            }
+        }
+        
+        if ($processor -eq "dotnet") {
+            return Invoke-DotNetXslt `
+                -Stylesheet $stylesheetPath `
+                -InputXml $inputXmlPath `
+                -OutputFile $outputFilePath `
+                -Parameters $options
+        }
+        elseif ($processor -eq "msxml") {
+            return Invoke-MsxmlXslt `
+                -Stylesheet $stylesheetPath `
+                -InputXml $inputXmlPath `
+                -OutputFile $outputFilePath `
+                -Parameters $options
+        }
+        elseif ($processor -eq "altova") {
+            return Invoke-AltovaXslt `
+                -Stylesheet $stylesheetPath `
+                -InputXml $inputXmlPath `
+                -OutputFile $outputFilePath `
+                -Parameters $options
+        }
+        else {
+            throw "Unsupported processor '$processor' for processing type 'xslt'. Supported processors: dotnet, msxml, altova"
+        }
+    }
+    else {
+        throw "Unsupported processing type '$processing'. Supported types: xproc, xslt"
     }
     # Clean up temp file if created
     #  if ($null -ne $tempPipelineFile -and (Test-Path $tempPipelineFile)) {
