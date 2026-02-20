@@ -10,6 +10,7 @@ param(
 # Ensure Pester 5 is loaded
 Import-Module Pester -Force
 
+
 # Configure Pester run
 $config = New-PesterConfiguration -Hashtable @{
     Run          = @{ Path = $TestPath }
@@ -19,7 +20,17 @@ $config = New-PesterConfiguration -Hashtable @{
 }
 
 Write-Host "Running Pester tests with code coverage..."
+
+# Use Pester's native timing feature if available, otherwise use a stopwatch
+$pesterSupportsTiming = ($config.PSObject.Properties.Name -contains 'Timing')
+if ($pesterSupportsTiming) {
+    $config.Timing = @{ Enabled = $true }
+}
+
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $results = Invoke-Pester -Configuration $config
+$stopwatch.Stop()
+
 
 # Save coverage report as JSON
 if ($results.CodeCoverage) {
@@ -41,3 +52,12 @@ else {
 
 Write-Host "\nTest run complete. Results:"
 $results | Format-Table -AutoSize
+
+# Print timing information
+if ($pesterSupportsTiming -and $results.Timing) {
+    $duration = $results.Timing.Duration
+    Write-Host ("Test duration (Pester native): {0}" -f $duration)
+}
+else {
+    Write-Host ("Test duration: {0}" -f $stopwatch.Elapsed)
+}

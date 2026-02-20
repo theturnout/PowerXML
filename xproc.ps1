@@ -24,7 +24,15 @@ function Get-MultiXmlDocuments {
         $clean
     }
     return $xmlDocs
-}   
+}  
+<#
+.SYNOPSIS
+Invokes the XmlCalabash processor with the specified parameters.
+.PARAMETER paths
+An array of paths to search for the XmlCalabash processor and its dependencies.
+.PARAMETER inPipe
+Whether to use the STDIN to pass data to the pipeline's default port.
+#> 
 function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(

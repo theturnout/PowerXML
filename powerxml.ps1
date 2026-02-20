@@ -5,7 +5,7 @@
 .PARAMETER InputObject
 The input to resolve, which can be an XML object or a string containing XML content.
 .PARAMETER Extension
-The file extension to use for the temporary file if the input is XML content. Default is "xml".
+The file extension to use for the temporary file if the input is XML content. Default is "xml". Only matters if the processor handles files of certain extensions differently.
 .PARAMETER targetEncoding
 The target encoding to use when writing the XML content to a temporary file. Default is "utf-8". Supported encodings include "utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", and "us-ascii".
 .NOTES
@@ -32,7 +32,9 @@ function Resolve-XmlInput {
         if ($InputObject -is [array]) {
             $resolvedArray = @()
             foreach ($item in $InputObject) {
-                $resolvedArray += Resolve-XmlInput -InputObject $item -Extension $Extension -targetEncoding $targetEncoding
+                $resolvedArray += Resolve-XmlInput -InputObject $item `
+                    -Extension $Extension `
+                    -targetEncoding $targetEncoding
             }
             return $resolvedArray
         }
@@ -40,6 +42,7 @@ function Resolve-XmlInput {
             $isXml = $true
         }
         elseif ($InputObject -is [string]) {
+            # try to parse the string as XML
             try {
                 [xml]$tryXml = $InputObject
                 if ($tryXml.DocumentElement -or $tryXml.Root) {
@@ -53,17 +56,17 @@ function Resolve-XmlInput {
     }
     if ($isXml) {
         $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".$Extension")
+        $encoding = $targetEncoding.ToUpperInvariant()
         if ($InputObject -is [string]) {
-            if ($targetEncoding -ne "utf-8") {
-                [System.IO.File]::WriteAllText($tempFile, $tryXml.OuterXml, [System.Text.Encoding]::GetEncoding($targetEncoding))
-            }
-            else {
-                [System.IO.File]::WriteAllText($tempFile, $tryXml.OuterXml)
-            }
+            $xmlContent = $tryXml.OuterXml
         }
         else {
-            $InputObject.OuterXml | Set-Content -Path $tempFile -Encoding UTF8
+            $xmlContent = $InputObject.OuterXml
         }
+        Set-Content `
+            -Path $tempFile `
+            -Value $xmlContent `
+            -Encoding $encoding
         return $tempFile
     }
     else {
@@ -90,6 +93,10 @@ A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.
 An array of parameters passed directly to the processor.
 .PARAMETER passthroughJava
 An array of parameters passed directly to the Java JVM.
+.PARAMETER MergeOutput
+Merges the STDOUT and STDERR of the processor into a single stream. Default is true.
+.PARAMETER Namespace
+A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g.
 #>
 function Transform-Xml {
     [CmdletBinding()]
@@ -110,7 +117,6 @@ function Transform-Xml {
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace
     )
-    Import-Module "$PSScriptRoot/polyglot" -Force
     
     $pipelinePath = Resolve-XmlInput -InputObject $pipeline -Extension "xpl"
     
@@ -228,28 +234,4 @@ function Transform-Xml {
     #  if ($null -ne $tempPipelineFile -and (Test-Path $tempPipelineFile)) {
     #      Remove-Item -Path $tempPipelineFile -Force -ErrorAction SilentlyContinue
     #  }
-}
-
-function New-Bundle {
-    [CmdletBinding()]
-    param(        
-        $targetComposition = "oscal",
-        $bundleName
-    )
-    
-    $localRepository = Get-LocalRepositoryPath
-    #process bundle
-    Import-Module "$PSScriptRoot/polyglot" -Force
-    [array]$paths = Copy-SoftwareComposition `
-        -sbomPath "$PSScriptRoot\sbom.xml" `
-        -targetComposition $targetComposition `
-        -localRepository $localRepository | Select-Object -Unique    
-
-    $bundlePath = Join-Path $localRepository "bundles"        
-    New-Item -Path $bundlePath -Name $bundleName -ItemType Directory -Force | Out-Null
-
-    $paths | ForEach-Object {      
-        Write-Host "Copying software composition from $($_) to $bundlePath"                  
-        Copy-Item -Path "$($_)\*.jar" -Destination $bundlePath -Force -Recurse
-    }
 }

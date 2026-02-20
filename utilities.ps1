@@ -57,12 +57,19 @@ function Parse-MimeMultipart {
                 if ($line -eq "" -or $line -match "^\s*$") {
                     # Empty line marks end of headers
                     $inHeaders = $false
-                    # Parse accumulated headers
+                    # Parse accumulated headers (already unfolded)
                     foreach ($headerLine in $headerLines) {
                         if ($headerLine -match "^([^:]+):\s*(.*)$") {
                             $currentPart.Headers[$matches[1].Trim()] = $matches[2].Trim()
                         }
                     }
+                }
+                elseif ($line -match "^[\s\t]+" -and $headerLines.Count -gt 0) {
+                    # Folded header continuation - append to previous header line
+                    # Replace leading whitespace with a single space per RFC 2822
+                    $continuation = $line -replace "^[\s\t]+", " "
+                    $lastIndex = $headerLines.Count - 1
+                    $headerLines[$lastIndex] = $headerLines[$lastIndex] + $continuation
                 }
                 else {
                     [void]$headerLines.Add($line)
@@ -80,8 +87,11 @@ function Parse-MimeMultipart {
         [void]$parts.Add($currentPart)
     }
     
-    # Use comma operator to ensure array is returned even for single item
-    return ,$parts.ToArray()
+    # Output each part individually for proper pipeline support
+    # This allows: Parse-MimeMultipart | ConvertTo-NativeType | ForEach-Object {...}
+    foreach ($part in $parts) {
+        Write-Output $part
+    }
 }
 #region MimeContent Wrapper Class
 # Define a .NET class to wrap content when MIME type doesn't map to native types
@@ -244,7 +254,7 @@ function ConvertTo-NativeType {
 .SYNOPSIS
 Ensures PowerShell and required modules are installed.
 #>
-function Confirm-RVPrerequisites {
+function Confirm-Prerequisites {
     [CmdletBinding()]
     param(
         [string]$RequirementsPath = (Join-Path -Path $PSScriptRoot -ChildPath '../requirements.psd1')
