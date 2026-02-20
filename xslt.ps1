@@ -173,7 +173,8 @@ function Invoke-AltovaXslt {
         [Parameter(Mandatory = $true)]
         [string]$InputXml,
         [string]$OutputFile,
-        [hashtable]$Parameters
+        [hashtable]$Parameters,
+        [switch]$NoPrompt
     )
     function Install-AltovaXml {
         $downloadUrl = "http://cdn.sw.altova.com/v2013r2/en/AltovaXMLCmu2013.exe"
@@ -204,6 +205,9 @@ function Invoke-AltovaXslt {
     }
     catch {
         Write-Warning "Failed to create AltovaXML COM object. AltovaXML may not be installed or registered."
+        if ($NoPrompt) {
+            throw "AltovaXML COM object not found: $_"
+        }
         $install = Read-Host "Do you want to download and install it now? (Y/N)"
         if ($install.ToLowerInvariant() -eq "y") {
             Install-AltovaXml
