@@ -38,6 +38,7 @@ function Invoke-XmlCalabash {
     param(
         [array]$paths,        
         [switch]$inPipe,
+        $InputObject,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
         [hashtable]$options,
@@ -166,11 +167,26 @@ function Invoke-XmlCalabash {
 
     [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 
-    if ($MergeOutput) {
-        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+    $stdinString = $null
+    if ($inPipe -and $null -ne $InputObject) {
+        $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
+    }
+
+    if ($null -ne $stdinString) {
+        if ($MergeOutput) {
+            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+        }
+        else {
+            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+        }
     }
     else {
-        $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+        if ($MergeOutput) {
+            $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+        }
+        else {
+            $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+        }
     }
     if ($output -is [array]) {
         return $output -join "`n"
@@ -186,6 +202,7 @@ function Invoke-MorganaXProc {
     param(
         [array]$paths,        
         [switch]$inPipe,
+        $InputObject,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
         [hashtable]$options,
@@ -285,16 +302,31 @@ function Invoke-MorganaXProc {
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
     #Write-Host "Invoking java -cp $cp com.xml_project.morganaxproc3.XProcEngine $xcArgs"
-    if ($MergeOutput) {
-        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
+    $stdinString = $null
+    if ($inPipe -and $null -ne $InputObject) {
+        $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
+    }
+
+    if ($null -ne $stdinString) {
+        if ($MergeOutput) {
+            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
+        }
+        else {
+            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
+        }
     }
     else {
-        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
+        if ($MergeOutput) {
+            $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
+        }
+        else {
+            $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
+        }
     }
     if ($output -is [array]) {
         $output = $output -join "`n"
     }
-    Write-Host $output
+    #Write-Host $output
     return $output
 } 
 
@@ -305,7 +337,7 @@ function Get-PXClassPath {
         [switch]$shortenClassPath
     ) 
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    Write-Host $paths
+    #Write-Host $paths
     $cp = @()
     if ($shortenClassPath) {
         $cp = "$($paths -join $cpDelimiter)"
@@ -315,7 +347,7 @@ function Get-PXClassPath {
         $paths | ForEach-Object {
             Get-ChildItem "$_" -Filter *.jar |
                 ForEach-Object {
-                    Write-Host "Adding $($_.FullName) to classpath"
+                    Write-Verbose "Adding $($_.FullName) to classpath"
                     $cp = "$cp$cpDelimiter$_"
                 }
             }

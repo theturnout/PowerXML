@@ -7,7 +7,7 @@ The input to resolve, which can be an XML object or a string containing XML cont
 .PARAMETER Extension
 The file extension to use for the temporary file if the input is XML content. Default is "xml". Only matters if the processor handles files of certain extensions differently.
 .PARAMETER targetEncoding
-The target encoding to use when writing the XML content to a temporary file. Default is "utf-8". Supported encodings include "utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", and "us-ascii".
+The target encoding to use when writing the XML content to a temporary file. Default is "UTF8". Supported encodings include "UTF8", "UTF16", "UTF16LE", "UTF16BE", "ISO-8859-1", and "US-ASCII".
 .NOTES
 Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path) will be returned as-is.
 #>
@@ -16,9 +16,8 @@ function Resolve-XmlInput {
     param(
         [Parameter(Mandatory = $true)]
         $InputObject,
-        [string]$Extension = "xml",
-        # [ValidationSet("utf-8", "utf-16", "utf-16LE", "utf-16BE", "iso-8859-1", "us-ascii")]        
-        [string]$targetEncoding = "utf-8"
+        [string]$Extension = "xml",        
+        [string]$targetEncoding = "UTF8"
     )
     $xmlTypes = @(
         'System.Xml.XmlDocument',
@@ -101,6 +100,8 @@ A hashtable of namespace prefixes and URIs to use when processing the pipeline, 
 function Transform-Xml {
     [CmdletBinding()]
     param(
+        [Parameter(ValueFromPipeline = $true)]
+        $InputObject,
         $processing = "xproc",
         $processor = "xmlcalabash",
         $targetComposition = "pester-tests",
@@ -139,6 +140,7 @@ function Transform-Xml {
             return Invoke-XmlCalabash `
                 -paths $paths `
                 -inPipe:$inPipe `
+                -InputObject $InputObject `
                 -pipeline $pipelinePath `
                 -options $options `
                 -inPort $inPortProcessed `
@@ -153,6 +155,7 @@ function Transform-Xml {
             return Invoke-MorganaXProc `
                 -paths $paths `
                 -inPipe:$inPipe `
+                -InputObject $InputObject `
                 -pipeline $pipelinePath `
                 -options $options `
                 -inPort $inPortProcessed `

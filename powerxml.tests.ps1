@@ -3,17 +3,21 @@
 # Import the module
 
 BeforeAll {
-    # TODO: clear .polyglotpm cache
-    #$global:TestDir = Join-Path $env:TEMP "pester-test-$(New-Guid)"
-    #New-Item -ItemType Directory -Path $TestDir | Out-Null
     $global:TestDir = $TestDrive
-    $env:polyglotpm = (Join-Path $global:TestDir "polyglotpm")
-    New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
+    # Dependency cache: use POWERXML_TEST_CACHE env var, or fall back to a persistent temp directory.
+    # Set POWERXML_TEST_CACHE=TestDrive:/ for ephemeral (clean) runs.
+    if ($env:POWERXML_TEST_CACHE) {
+        $env:polyglotpm = $env:POWERXML_TEST_CACHE
+    }
+    else {
+        $env:polyglotpm = Join-Path $env:TEMP "powerxml-test-deps"
+    }
+    if (-not (Test-Path $env:polyglotpm)) {
+        New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
+    }
 }
 
-
 AfterAll {
-    #  Remove-Item -Path $global:TestDir -Recurse -Force
     $env:polyglotpm = $null
 }
 
@@ -49,7 +53,6 @@ Describe 'Transform-Xml' {
             Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/optionalHelloWorld.xpl" -Options @{ name = "John" } | Should -BeLike "*Hello, John!"
         }
 
-
         It "$($_.Name) - Should be running with correct processor" {        
             [xml]$xmlContent = Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/processor.xpl"        
             $xmlContent.supplemental."xproc-engine-name" | Should -Be $_.EngineName
@@ -67,7 +70,7 @@ Describe 'Transform-Xml' {
             $xmlContent = Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" 
             ([xml]$xmlContent).content | Should -Be "Hello, World!"
         } 
-        It "$($_.Name) - Should passthrough input via file" {
+        It "$($_.Name) - Should passthrough input to output via file" {
             $inputFileName = "$TestDrive/input.xml"
             $outputFileName = "$TestDrive/output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
@@ -82,6 +85,14 @@ Describe 'Transform-Xml' {
             $outputFileName = "$TestDrive/output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
             Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $xmlInput } -OutPort @{"result" = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true        
+            [xml]$xmlOutput = Get-Content $outputFileName -Raw
+            $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
+        }
+        It "$($_.Name) - Should pass input via object through STDIN" {
+            $outputFileName = "$TestDrive/output2.xml"
+            [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
+            $xmlInput | Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPipe -OutPort @{"result" = $outputFileName }
             Test-Path $outputFileName | Should -Be $true        
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml

@@ -4,17 +4,21 @@
 param(
     [string]$TestPath = "./",
     [string]$ModulePath = "./",
-    [string]$CoverageOutput = "./coverage.json"
+    [string]$CoverageOutput = "./coverage.json",
+    [switch]$NoCache
 )
-
+if ($NoCache) {
+    $env:POWERXML_TEST_CACHE = "TestDrive:/"
+}
 # Ensure Pester 5 is loaded
 Import-Module Pester -Force
+$VerbosePreference = 'SilentlyContinue'
 
 
 # Configure Pester run
 $config = New-PesterConfiguration -Hashtable @{
-    Run          = @{ Path = $TestPath }
-    CodeCoverage = @{ Path = $ModulePath }
+    Run          = @{ Path = $TestPath; PassThru = $true }
+    CodeCoverage = @{ Enabled = $true; Path = $ModulePath }
     Output       = @{ Verbosity = 'Detailed' }
     TestResult   = @{ Enabled = $true }
 }
