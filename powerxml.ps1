@@ -82,8 +82,6 @@ The kind of processing to run. Default xproc.
 The specific processor to use.
 .PARAMETER targetComposition
 The target composition in the SBOM to use to determine which packages are required to run the code.
-.PARAMETER inPipe
-Whether to use the STDIN to pass data to the pipeline's default port.
 .PARAMETER inPort
 A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
 .PARAMETER inPort
@@ -105,7 +103,6 @@ function Transform-Xml {
         $processing = "xproc",
         $processor = "xmlcalabash",
         $targetComposition = "pester-tests",
-        [switch]$inPipe,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
         [Alias("parameters")]
@@ -119,6 +116,7 @@ function Transform-Xml {
         [hashtable]$Namespace
     )
     
+    $isPipelineInput = $MyInvocation.ExpectingInput
     $pipelinePath = Resolve-XmlInput -InputObject $pipeline -Extension "xpl"
     
     $inPortProcessed = $null
@@ -139,7 +137,7 @@ function Transform-Xml {
         if ($processor -eq "xmlcalabash") {
             return Invoke-XmlCalabash `
                 -paths $paths `
-                -inPipe:$inPipe `
+                -PipeInput $isPipelineInput `
                 -InputObject $InputObject `
                 -pipeline $pipelinePath `
                 -options $options `
@@ -154,7 +152,7 @@ function Transform-Xml {
         elseif ($processor -eq "morganaxproc") {
             return Invoke-MorganaXProc `
                 -paths $paths `
-                -inPipe:$inPipe `
+                -PipeInput $isPipelineInput `
                 -InputObject $InputObject `
                 -pipeline $pipelinePath `
                 -options $options `
