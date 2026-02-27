@@ -262,3 +262,70 @@ function Invoke-AltovaXslt {
         throw "XSLT transformation failed: $altovaError"
     }
 }
+
+<#
+.SYNOPSIS
+Transforms XML using xsltproc (libxslt command-line tool).
+.PARAMETER Stylesheet
+The path to the XSLT stylesheet file.
+.PARAMETER InputXml
+The path to the input XML file.
+.PARAMETER OutputFile
+Optional path to write the output. If not specified, returns output as string.
+.PARAMETER Parameters
+Optional hashtable of XSLT parameters (passed as --stringparam).
+.NOTES
+Requires xsltproc to be installed and available on PATH.
+Supports XSLT 1.0 with EXSLT extensions.
+#>
+function Invoke-XsltprocXslt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Stylesheet,
+        [Parameter(Mandatory = $true)]
+        [string]$InputXml,
+        [string]$OutputFile,
+        [hashtable]$Parameters
+    )
+    
+    $xsltprocCmd = Get-Command 'xsltproc' -ErrorAction SilentlyContinue
+    if (-not $xsltprocCmd) {
+        throw "xsltproc is not installed or not found on PATH."
+    }
+    
+    $xsltprocArgs = @()
+    
+    if ($OutputFile) {
+        $xsltprocArgs += '--output'
+        $xsltprocArgs += $OutputFile
+    }
+    
+    if ($Parameters) {
+        foreach ($key in $Parameters.Keys) {
+            $xsltprocArgs += '--stringparam'
+            $xsltprocArgs += $key
+            $xsltprocArgs += [string]$Parameters[$key]
+        }
+    }
+    
+    $xsltprocArgs += $Stylesheet
+    $xsltprocArgs += $InputXml
+    
+    $procResult = & xsltproc @xsltprocArgs 2>&1
+    
+    $stderr = @($procResult | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+    $stdout = @($procResult | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] })
+    
+    if ($LASTEXITCODE -ne 0) {
+        $errorMsg = ($stderr | ForEach-Object { $_.ToString() }) -join "`n"
+        throw "xsltproc transformation failed (exit code $LASTEXITCODE): $errorMsg"
+    }
+    
+    if ($OutputFile) {
+        return $null
+    }
+    else {
+        return ($stdout -join "`n")
+    }
+}
