@@ -30,14 +30,12 @@ function Get-MultiXmlDocuments {
 Invokes the XmlCalabash processor with the specified parameters.
 .PARAMETER paths
 An array of paths to search for the XmlCalabash processor and its dependencies.
-.PARAMETER inPipe
-Whether to use the STDIN to pass data to the pipeline's default port.
 #> 
 function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(
         [array]$paths,        
-        [switch]$inPipe,
+        [bool]$PipeInput,
         $InputObject,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
@@ -52,8 +50,8 @@ function Invoke-XmlCalabash {
     )
     # look for the xmlcalabash path
     $processorPath = $paths | Where-Object {
-        $_ -like "*xmlcalabash*"
-    }
+        $_ -like "*xmlcalabash*"        
+    } | Select-Object -First 1
     if ( -not $processorPath) {
         throw "Could not find xmlcalabash processor in software composition paths"
     }    
@@ -106,7 +104,7 @@ function Invoke-XmlCalabash {
     }
 
     #handle STDIN
-    if ($inPipe) {
+    if ($PipeInput) {
         $xcArgs += @("--pipe")
     }
 
@@ -168,7 +166,7 @@ function Invoke-XmlCalabash {
     [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 
     $stdinString = $null
-    if ($inPipe -and $null -ne $InputObject) {
+    if ($PipeInput -and $null -ne $InputObject) {
         $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
     }
 
@@ -201,7 +199,7 @@ function Invoke-MorganaXProc {
     [CmdletBinding()]
     param(
         [array]$paths,        
-        [switch]$inPipe,
+        [bool]$PipeInput,
         $InputObject,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
@@ -214,8 +212,15 @@ function Invoke-MorganaXProc {
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace
     )
-    $processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8")
+    #$processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8.2")
         
+    # look for the xmlcalabash path
+    $processorPath = $paths | Where-Object {
+        $_ -like "*MorganaXProc-IIIse*"
+    } | Select-Object -First 1
+    if ( -not $processorPath) {
+        throw "Could not find MorganaXProc processor in software composition paths"
+    }    
     #construct classpath
     $cp = "$processorPath/MorganaXProc-IIIse.jar"
 
@@ -260,7 +265,7 @@ function Invoke-MorganaXProc {
     }
 
     #handle STDIN
-    if ($inPipe) {
+    if ($PipeInput) {
         $xcArgs += @("--pipe")
     }
 
@@ -303,7 +308,7 @@ function Invoke-MorganaXProc {
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
     #Write-Host "Invoking java -cp $cp com.xml_project.morganaxproc3.XProcEngine $xcArgs"
     $stdinString = $null
-    if ($inPipe -and $null -ne $InputObject) {
+    if ($PipeInput -and $null -ne $InputObject) {
         $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
     }
 
