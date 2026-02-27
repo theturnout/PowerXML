@@ -112,7 +112,7 @@ function Transform-Xml {
         $InputObject,        
         [ValidateSet("xproc", "xslt")]
         $processing = "xproc",
-        [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova")]
+        [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova", "xsltproc")]
         $processor = "xmlcalabash",
         $targetComposition = "pester-tests",
         [Parameter(Mandatory = $true)] 
