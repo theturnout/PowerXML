@@ -59,6 +59,16 @@ function Resolve-XmlInput {
         if ($InputObject -is [string]) {
             $xmlContent = $tryXml.OuterXml
         }
+        elseif ($InputObject -is [System.Xml.Linq.XNode]) {
+            # System.Xml.Linq types (XDocument, XElement) use ToString(),
+            # and the declaration must be prepended for XDocument.
+            if ($InputObject -is [System.Xml.Linq.XDocument] -and $InputObject.Declaration) {
+                $xmlContent = $InputObject.Declaration.ToString() + "`n" + $InputObject.ToString()
+            }
+            else {
+                $xmlContent = $InputObject.ToString()
+            }
+        }
         else {
             $xmlContent = $InputObject.OuterXml
         }
@@ -99,8 +109,10 @@ function Transform-Xml {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline = $true)]
-        $InputObject,
+        $InputObject,        
+        [ValidateSet("xproc", "xslt")]
         $processing = "xproc",
+        [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova")]
         $processor = "xmlcalabash",
         $targetComposition = "pester-tests",
         [Parameter(Mandatory = $true)] 
@@ -217,6 +229,13 @@ function Transform-Xml {
                 -OutputFile $outputFilePath `
                 -Parameters $options
         }
+        elseif ($processor -eq "xsltproc") {
+            return Invoke-XsltprocXslt `
+                -Stylesheet $stylesheetPath `
+                -InputXml $inputXmlPath `
+                -OutputFile $outputFilePath `
+                -Parameters $options
+        }
         elseif ($processor -eq "altova") {
             return Invoke-AltovaXslt `
                 -Stylesheet $stylesheetPath `
@@ -225,7 +244,7 @@ function Transform-Xml {
                 -Parameters $options
         }
         else {
-            throw "Unsupported processor '$processor' for processing type 'xslt'. Supported processors: dotnet, msxml, altova"
+            throw "Unsupported processor '$processor' for processing type 'xslt'. Supported processors: dotnet, msxml, xsltproc, altova"
         }
     }
     else {
