@@ -6,8 +6,40 @@
 
 $hashAlgorithm = "SHA256"
 
+<#
+.SYNOPSIS
+    Validates a file's hash against an expected value.
+.PARAMETER Path
+    Path to the file to validate.
+.PARAMETER ExpectedHash
+    The expected hash value (hex string).
+.PARAMETER Algorithm
+    Hash algorithm to use. Defaults to SHA256.
+.OUTPUTS
+    Returns the computed hash string on success.
+.NOTES
+    Throws if the computed hash does not match the expected hash.
+#>
+function Test-FileHash {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedHash,
+        [string]$Algorithm = "SHA256"
+    )
+
+    $computed = Get-FileHash -Path $Path -Algorithm $Algorithm
+    if ($computed.Hash -ne $ExpectedHash) {
+        throw "Hash mismatch for '$(Split-Path $Path -Leaf)'. Expected: $ExpectedHash, Actual: $($computed.Hash)"
+    }
+    return $computed.Hash
+}
+
 # Function to list GitHub releases
 function Get-GitHubReleases {
+    [CmdletBinding()]
     param (
         [string]$RepoOwner,
         [string]$RepoName
@@ -51,9 +83,32 @@ function Copy-GitHubRelease {
         [string]$Version = "latest",
         [string[]]$Assets = @(), # Array of specific asset names to download
         [string]$libPath,
-        [string]$ApiPath = "https://api.github.com"
+        [string]$ApiPath = "https://api.github.com",
+        [hashtable]$ExpectedHashes = @{}
     )
     Write-Verbose $Assets.ToString()
+
+    # Local-first: skip API call if all requested assets are already cached
+    if ($Assets.Count -gt 0 -and $libPath) {
+        $allCached = $true
+        $cachedPaths = @()
+        foreach ($assetName in $Assets) {
+            $fileNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($assetName)
+            $directoryPath = Join-Path $libPath $fileNameWithoutExtension
+            if (Test-Path $directoryPath -PathType Container) {
+                $cachedPaths += $directoryPath
+            }
+            else {
+                $allCached = $false
+                break
+            }
+        }
+        if ($allCached) {
+            Write-Verbose "All requested assets already cached in $libPath. Skipping API call."
+            return $cachedPaths
+        }
+    }
+
     # Define the API URL
     if ($Version -eq "latest") {
         $url = "$apiPath/repos/$RepoOwner/$RepoName/releases/latest"        
@@ -106,7 +161,10 @@ function Copy-GitHubRelease {
                     Invoke-WebRequest -Uri $downloadUrl -OutFile $outFile -UseBasicParsing
                     Write-Host "$fileName downloaded successfully.`n"
                 }
-                # todo check file size, if not equal to asset size, delete and re-download
+                # Validate hash if expected
+                if ($ExpectedHashes.ContainsKey($fileName)) {
+                    Test-FileHash -Path $outFile -ExpectedHash $ExpectedHashes[$fileName]
+                }
 
                 # Don't assume ZIP
                 #check if extension is anything Expand-Archive can handle                
@@ -139,7 +197,7 @@ function Copy-GitHubRelease {
                     Write-Error "Logic error"
                 }
             }
-            Write-Host $paths
+            #Write-Host $paths
             return $paths
 
         }
@@ -160,169 +218,3 @@ function Copy-GitHubRelease {
     }
 }
 
-# Prepare artifact for storage
-function Build-Artifact {
-    param (
-        [string]$name,
-        [string]$version,
-        [string]$urlTemplate,
-        [string]$zipRoot = "$name-$version",
-        #[string]$destFolderName = $name,
-        [string]$extendedPath,
-        [string]$expectedHash,
-        [string]$libPath
-    )
-
-    $zipHash = Get-FileHash -Path $zipPath -Algorithm $hashAlgorithm
-    # Print the calculated hash
-    if ($expectedHash -and $zipHash.Hash -ne $expectedHash) {
-        Write-Warning "The file hash does NOT match the known hash."            
-    }
-    # if (-not (Test-Path $unzipPath)) {
-    #     New-Item -ItemType Directory -Path $unzipPath | Out-Null
-    # }
-    #Saxon doesn't come in a nested directory and will need to append the libPath
-    Expand-Archive -Path $zipPath -DestinationPath (Join-Path $libPath $extendedPath) -Force
-    if (-not $extendedPath) {            
-        Rename-Item -Path (Join-Path $libPath $zipRoot) -NewName "$name-$version" -Force
-    }
-
-}
-
-function DownloadArtifactNew {
-
-    param (
-        [string]$name,
-        [string]$version,
-        [string]$urlTemplate,
-        [string]$zipRoot = "$name-$version",
-        #[string]$destFolderName = $name,
-        [string]$extendedPath,
-        [string]$expectedHash
-    )
-    if (-not $version) {
-        # attempt to find version
-        #    GetLatestVersion()
-    }
-
-    DownloadArtifact -name $name -version $version -urlTemplate $asset.RepoUri
-    #see if this artifact is in our data list
-    #  if($Data.assets[$name]){
-    #      $asset = $Data.assets[$name]
-    #      if($asset.RepoType -eq "GitHub"){
-    #          Copy-GitHubRelease -RepoOwner $asset.RepoOwner `
-    #          -RepoName $asset.RepoName `
-    #          -Version $version `
-    #          -Assets @($asset.AssetString)
-    #      } else {
-    #          DownloadArtifact -name $name -version $version -urlTemplate $asset.RepoUri
-    #      }
-    #  }
-
-}
-
-function DownloadArtifact {
-    param (
-        [string]$name,
-        [string]$version,
-        [string]$urlTemplate,
-        [string]$zipRoot = "$name-$version",
-        #[string]$destFolderName = $name,
-        [string]$extendedPath,
-        [string]$expectedHash,
-        [string]$libPath
-    )
-    if (-not $version) {
-        # attempt to find version
-        #    GetLatestVersion()
-    }
-
-    #$destPath = Join-Path $libPath $destFolderName
-    $zipPath = Join-Path $libPath "$name-$version.zip"
-    $unzipPath = Join-Path $libPath "$name-$version"
-    if (-not (Test-Path $unzipPath)) {
-        Write-Host "Downloading $name-$version ..."
-
-        # Add version to urlTemplate
-        $downloadUrl = $urlTemplate -f $version
-        Write-Host "Remote site is $downloadUrl"
-        Invoke-WebRequest -UserAgent "Wget" -Uri $downloadUrl -OutFile $zipPath
-        $zipHash = Get-FileHash -Path $zipPath -Algorithm $hashAlgorithm
-        # Print the calculated hash
-        if ($expectedHash -and $zipHash.Hash -ne $expectedHash) {
-            Write-Warning "The file hash does NOT match the known hash."            
-        }
-        # if (-not (Test-Path $unzipPath)) {
-        #     New-Item -ItemType Directory -Path $unzipPath | Out-Null
-        # }
-        #Saxon doesn't come in a nested directory and will need to append the libPath
-        Expand-Archive -Path $zipPath -DestinationPath (Join-Path $libPath $extendedPath) -Force
-        if (-not $extendedPath) {            
-            Rename-Item -Path (Join-Path $libPath $zipRoot) -NewName "$name-$version" -Force
-        }
-        # Remove-Item -Path $zipPath -Force
-    }
-    else {
-        Write-Host "$name $version already downloaded."
-    }
-}
-
-function DownloadSaxon {
-    param (
-        [string]$version = "11-5J",
-        [string]$edition = "HE"
-    )
-    $edition = $edition.ToUpper()
-    if ($edition -notin @("HE", "PE", "EE")) {
-        throw "Invalid Saxon edition specified. Valid options are: HE, PE, EE."
-    }
-
-    $saxonJar = "saxon-${edition.ToLower()}-$version.jar"
-    if (-not (Test-Path (Join-Path $libPath $saxonJar))) {
-        DownloadArtifact -name "Saxon $edition" -version $version `
-            -urlTemplate "https://www.saxonica.com/download/Saxon$edition$version.zip" `
-            -extendedPath "saxon-$edition-$version" 
-        #-destFolderName "Saxon$edition$version"
-
-        # Clean up extraneous JARs
-        #    Get-ChildItem -Path $libPath -Filter "saxon-$edition-*.jar" | Where-Object {
-        #        $_.Name -ne $saxonJar
-        #    } | Remove-Item -Force
-    }
-    else {
-        Write-Host "Saxon $edition $version already downloaded."
-    }
-}
-
-# CLI logic
-## if ($args.Count -eq 0) {
-##     Write-Host "Usage:"
-##     Write-Host "  ls <RepoOwner> <RepoName>         # List available versions"
-##     Write-Host "  use <RepoOwner> <RepoName> <Tag> # Download a specific or latest version"
-## }
-## else {
-##     switch ($args[0]) {
-##         "ls" {
-##             if ($args.Count -ne 3) {
-##                 Write-Host "Usage: ls <RepoOwner> <RepoName>"
-##             }
-##             else {
-##                 Get-GitHubReleases -RepoOwner $args[1] -RepoName $args[2]
-##             }
-##         }
-##         "use" {
-##               if ($args.Count -lt 3) {
-##                 Write-Host "Usage: use <RepoOwner> <RepoName> <Tag> [<Asset1> <Asset2> ...]"
-##                 Write-Host "  Omit <Tag> to download the latest version. Omit assets to download all."
-##             } else {
-##                 $version = if ($args.Count -ge 4) { $args[3] } else { "latest" }
-##                 $assets = if ($args.Count -gt 4) { $args[4..($args.Count - 1)] } else { @() }
-##                 Copy-GitHubRelease -RepoOwner $args[1] -RepoName $args[2] -Version $version -Assets $assets
-##             }
-##         }
-##         default {
-##             Write-Host "Unknown command: $($args[0])"
-##             Write-Host "Use 'ls' to list versions or 'use' to download."
-##         }
-##     }
-## }

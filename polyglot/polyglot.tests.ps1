@@ -1,14 +1,14 @@
 # Import the main module if needed
-# . "$PSScriptRoot\download-deps.ps1"
-# . "$PSScriptRoot\polyglot-pm.ps1"
-# . "$PSScriptRoot\purl.ps1"
-# . "$PSScriptRoot\sbom.ps1"
+# . "$PSScriptRoot/download-deps.ps1"
+# . "$PSScriptRoot/polyglot-pm.ps1"
+# . "$PSScriptRoot/purl.ps1"
+# . "$PSScriptRoot/sbom.ps1"
 
 BeforeAll {
     # TODO: clear .polyglotpm cache
     #$global:TestDir = Join-Path $env:TEMP "pester-test-$(New-Guid)"
     #New-Item -ItemType Directory -Path $TestDir | Out-Null
-    $global:TestDir = "TestDrive:\"
+    $global:TestDir = "TestDrive:/"
     Import-Module "$PSScriptRoot/../polyglot" -DisableNameChecking
 
     $env:polyglotpm = (Join-Path $global:TestDir "polyglotpm")
@@ -37,7 +37,7 @@ Describe 'SBOM Support' {
 
     It 'Should pass on valid SBOM file' {
         # load the xml file
-        $sbom = [xml](Get-Content -Path "test_data\sbom.xml")
+        $sbom = [xml](Get-Content -Path "test_data/sbom.xml")
         Test-SBOM $sbom | Should -Be $true
     }
 

@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-test-package:
+    runs-on: ubuntu-latest
+
+    env:
+      MODULE_NAME: powerxml
+      MODULE_PATH: powerxml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools (Pester + PSScriptAnalyzer)
+        run: |
+          Install-Module -Name Utilities -Scope CurrentUser -Force
+        shell: pwsh
+
+      #- name: Lint module
+      #  run: |
+      #    Invoke-ScriptAnalyzer -Path $env:MODULE_PATH -Recurse -Severity Warning,Error
+      #  shell: pwsh
+
+      #- name: Run tests
+      #  run: |
+      #    Invoke-Pester -Path "$env:MODULE_PATH/test/unit" -Output Detailed
+      #  shell: pwsh
+
+      # Optional: bump module version from tag, *even for private use*
+      - name: Set module version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $tag = "${{ github.ref_name }}"  # e.g. v1.2.3
+          $version = $tag.TrimStart('v')
+
+          $psd1Path = Join-Path $env:MODULE_PATH "$env:MODULE_NAME.psd1"
+          $data = Import-PowerShellDataFile $psd1Path
+          $data.ModuleVersion = $version
+          Export-PowerShellDataFile -Hashtable $data -Path $psd1Path
+        shell: pwsh
+
+      - name: Package module (zip)
+        run: |
+          New-Item -ItemType Directory -Path out -Force | Out-Null
+          Copy-Item -Recurse $env:MODULE_PATH out
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MODULE_NAME }}-${{ github.ref_name }}
+          path: out

@@ -5,26 +5,37 @@ function Get-MultiXmlDocuments {
         [string]$StdOut
     )
     
-    # Regex pattern for XmlCalabash headers
+    # Detect multipart MIME: first non-empty line starts with "--"
+    $firstLine = ($StdOut -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -First 1)
+    if ($firstLine -match '^--(.+)') {
+        $boundary = $matches[1] -replace '--$', ''
+        $parts = Parse-MimeMultipart -MimeString $StdOut -Boundary $boundary
+        $results = foreach ($part in $parts) {
+            ConvertTo-NativeType -MimePart $part
+        }
+        return $results
+    }
+
+    # XmlCalabash standard out format
     $headerPattern = '^=== result :: \d+ :: .+?={10,}\r?\n'
-    $trailerPattern = '^={72,}\r?\n'
+    $trailerPattern = '^={72,}\r?\n?'
     
     # If no headers, treat as single document
-    if ($StdOut -notmatch $headerPattern) {
+    if (-not [regex]::IsMatch($StdOut, $headerPattern, 'Multiline')) {
         return , ($StdOut)
     }
     
     # Split on headers, ignore empty entries
-    $docs = [regex]::Split($StdOut, $headerPattern) | Where-Object { $_.Trim() }
+    $docs = [regex]::Split($StdOut, $headerPattern, 'Multiline') | Where-Object { $_.Trim() }
     
-    # Remove trailers and parse each doc
+    # Remove trailers and convert each doc via ConvertTo-NativeType
     $xmlDocs = foreach ($doc in $docs) {
-        # Remove trailing lines of '='
         $clean = [regex]::Replace($doc, $trailerPattern, '', 'Multiline')
-        $clean
+        $mimePart = @{ Headers = @{ 'Content-Type' = 'application/xml' }; Content = $clean.Trim() }
+        ConvertTo-NativeType -MimePart $mimePart
     }
     return $xmlDocs
-}  
+}
 <#
 .SYNOPSIS
 Invokes the XmlCalabash processor with the specified parameters.
@@ -187,7 +198,7 @@ function Invoke-XmlCalabash {
         }
     }
     if ($output -is [array]) {
-        return $output -join "`n"
+        return $output -join "`n" | Get-MultiXmlDocuments
     }
     else {
         return $output | Get-MultiXmlDocuments

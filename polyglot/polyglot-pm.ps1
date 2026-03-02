@@ -1,12 +1,8 @@
 # Polyglot Package Manager using CycloneDX XML
 
-#  $session = New-PSSession -ConfigurationName 'PowerShell.7'
-#   Enter-PSSession $session
-
 . "$PSScriptRoot\purl.ps1"
 . "$PSScriptRoot\download-deps.ps1"
 . "$PSScriptRoot\pom.ps1"
-
 
 $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
 <#
@@ -18,6 +14,8 @@ $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
   The specific composition to copy from the SBOM.
   .PARAMETER localRepository
   The local repository path where the dependencies will be copied.
+  .OUTPUTS
+  A list of objects containing the PURL and local path of each downloaded package.
 #>
 function Copy-SoftwareComposition {
   [CmdletBinding()]
@@ -46,8 +44,12 @@ function Copy-SoftwareComposition {
   $composition.dependencies.dependency | ForEach-Object {
     $cur = $_.ref
     $currentComposition = $bom.components.component | Where-Object { $_."bom-ref" -eq $cur }
+    if (!$currentComposition) {
+      Write-Host "Warning: Component with bom-ref $cur not found in SBOM components list" -ForegroundColor Yellow
+      continue
+    }
     # TODO better XPath
-    # pull the distribution version preferrentially over the pkg mgr version
+    # pull the distribution version preferentially over the pkg mgr version
     $distribution = $currentComposition.externalReferences.reference.url
     if ($distribution) {
       Write-Verbose "Distribution $distribution"
@@ -57,13 +59,56 @@ function Copy-SoftwareComposition {
       Write-Verbose "Package $($currentComposition.purl)"
       $purl = ConvertFrom-PkgUri($currentComposition.purl)
     }
+    # Download the package
+    $downloadResult = Get-PackageFromPurl -purl $purl -localRepository $localRepository
 
-    # $purl | Format-List
-    # Write-Host "------------------------------------"
-    # try to download files
-    $paths = Get-PackageFromPurl -purl $purl
-    
-    return $paths 
+    # Extract SBOM-level metadata for post-processing
+    $zipRoot = ($currentComposition.properties.property | Where-Object { $_.name -eq "rootZip" }).InnerText
+    # Collect all hash nodes from SBOM (externalReferences and component-level)
+    $hashNodes = @()
+    $extRefHashes = $currentComposition.externalReferences.reference.hashes.hash
+    if ($extRefHashes) { $hashNodes += @($extRefHashes) }
+    $componentHashes = $currentComposition.hashes.hash
+    if ($componentHashes) { $hashNodes += @($componentHashes) }
+
+    $verifiableHashes = @()
+    if ($hashNodes.Count -eq 0) {
+      Write-Warning "No hashes found for component '$cur' in SBOM."
+    }
+    else {
+      $supportedAlgorithms = @('MD5', 'SHA1', 'SHA256', 'SHA384', 'SHA512')
+      $allHashes = @($hashNodes | ForEach-Object {
+        [PSCustomObject]@{
+          Algorithm = ($_.alg -replace '-', '')
+          Hash      = $_.InnerText
+        }
+      })
+      $verifiableHashes = @($allHashes | Where-Object { $_.Algorithm -in $supportedAlgorithms })
+      if ($verifiableHashes.Count -eq 0) {
+        $foundAlgs = ($allHashes | ForEach-Object { $_.Algorithm }) -join ', '
+        throw "Component '$cur' has hashes but none use a verifiable algorithm. Found: $foundAlgs"
+      }
+    }
+
+    # Post-process with Install-Package when download result is a file (not yet installed)
+    $mainPath = if ($downloadResult -is [array]) { $downloadResult[0] } else { $downloadResult }
+    if ($mainPath -and (Test-Path $mainPath -PathType Leaf)) {
+      $installParams = @{
+        DownloadedPath  = $mainPath
+        Name            = $purl.Name
+        Version         = $purl.Version
+        LocalRepository = $localRepository
+      }
+      if ($zipRoot) { $installParams.ZipRoot = $zipRoot }
+      if ($verifiableHashes.Count -gt 0) {
+        $installParams.Hashes = $verifiableHashes
+      }
+      $installedPath = Install-Package @installParams
+      if ($downloadResult -is [array]) { $downloadResult[0] = $installedPath }
+      else { $downloadResult = $installedPath }
+    }
+
+    return $downloadResult 
   }
 } 
 <#
@@ -77,8 +122,11 @@ A object with the Purl and local path of the downloaded package.
 function Get-PackageFromPurl {  
   param(
     [Parameter(Mandatory = $true)]
-    $purl
+    $purl,
+    [string] $localRepository = (Get-LocalRepositoryPath)
   )
+
+  $paths = @()
       
   if ($purl.Type -eq "maven") {
     $groupId = $purl.Namespace
@@ -93,40 +141,55 @@ function Get-PackageFromPurl {
       $repoUrl = "https://repo1.maven.org/maven2"
     }
     
-    $downloadPath = Get-LocalRepositoryPath
-    
-    
-    $paths = @("$downloadPath\$artifactId-$version")
+    $paths = @("$localRepository\$artifactId-$version")
     
     # Main Execution
     $rootPom = Get-MavenArtifact -groupId $groupId `
       -artifactId $artifactId `
       -version $version `
       -repoUrl $repoUrl `
-      -downloadPath $downloadPath
+      -downloadPath $localRepository
 
     if ($rootPom) {
       $currentPaths = Resolve-Dependencies -pomFile $rootPom `
         -repoUrl $MAVEN_CENTRAL `
-        -downloadPath $downloadPath
+        -downloadPath $localRepository
       if ($currentPaths) {
         $paths += $currentPaths
       }
     }
-    Write-Verbose "Maven dependencies downloaded to: $downloadPath"
+    Write-Verbose "Maven dependencies downloaded to: $localRepository"
   }
-  elseif ($purl.Type -eq "sourceforge") {    
+  elseif ($purl.Type -eq "sourceforge") {
     $name = $purl.Name
+    $version = $purl.Version
     $filePath = $purl.QualifiersParsed["filename"]
-    DownloadArtifact -name $purl.Name -version $purl.Version `
-      -urlTemplate "https://sourceforge.net/projects/$name/files/$filePath" `
-      -libPath (Get-LocalRepositoryPath)
+    $downloadUrl = "https://sourceforge.net/projects/$name/files/$filePath"
+    $zipPath = Join-Path $localRepository "$name-$version.zip"
+    $installedPath = Join-Path $localRepository "$name-$version"
+
+    # Already installed (by a previous Install-Package call)
+    if (Test-Path $installedPath -PathType Container) {
+      Write-Verbose "$name $version already installed."
+      $paths = @($installedPath)
+    }
+    else {
+      # Download the zip if not already present
+      if (-not (Test-Path $zipPath)) {
+        Write-Host "Downloading $name-$version ..."
+        Invoke-WebRequest -UserAgent "Wget" -Uri $downloadUrl -OutFile $zipPath
+      }
+      else {
+        Write-Verbose "$name $version already downloaded."
+      }
+      $paths = @($zipPath)
+    }
   }
   elseif ($purl.Type -eq "github") {
     $paths += Copy-GitHubRelease -RepoOwner $purl.Namespace `
       -RepoName $purl.Name `
       -Version $purl.Version `
-      -LibPath (Get-LocalRepositoryPath)
+      -LibPath $localRepository
   }
   elseif ($purl.Type -eq "codeberg") {
     if ($purl.QualifiersParsed["filename"]) {
@@ -136,7 +199,7 @@ function Get-PackageFromPurl {
     $paths += Copy-GitHubRelease -RepoOwner $purl.Namespace `
       -RepoName $purl.Name `
       -Version $purl.Version `
-      -LibPath (Get-LocalRepositoryPath) `
+      -LibPath $localRepository `
       -ApiPath "https://codeberg.org/api/v1" `
       -Assets @($fileName)
   }
@@ -147,10 +210,11 @@ function Get-PackageFromPurl {
 }
 
 function Get-LocalRepositoryPath {
-  if ($env:polyglotpm) {
-    return $env:polyglotpm
+  $path = if ($env:polyglotpm) { $env:polyglotpm } else { "$HOME/.polyglotpm" }
+  # Resolve PSDrive paths (e.g. TestDrive:\) to real filesystem paths
+  # so non-PowerShell consumers like Java can use them
+  if (Test-Path $path) {
+    return (Convert-Path $path)
   }
-  else {
-    return "$HOME/.polyglotpm"
-  }
+  return $path
 }
