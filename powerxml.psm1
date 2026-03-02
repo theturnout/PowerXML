@@ -5,3 +5,4 @@ Export-ModuleMember -Function Parse-MimeMultipart
 Export-ModuleMember -Function ConvertTo-NativeType
 Export-ModuleMember -Function Transform-Xml
 Export-ModuleMember -Function Get-PXClassPath 
+Export-ModuleMember -Function Get-MultiXmlDocuments
