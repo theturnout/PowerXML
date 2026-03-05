@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    
+    <!-- Schema demonstrating PSVI default value features -->
+    
+    <xs:element name="product">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="name" type="xs:string"/>
+                <xs:element name="price" type="xs:decimal"/>
+                <xs:element name="quantity" type="xs:integer"/>
+            </xs:sequence>
+            <!-- Default attribute values - PSVI will inject these when missing -->
+            <xs:attribute name="status" type="xs:string" default="active"/>
+            <xs:attribute name="currency" type="xs:string" default="USD"/>
+            <xs:attribute name="taxRate" type="xs:decimal" default="0.10"/>
+            <xs:attribute name="warehouse" type="xs:string" default="MAIN"/>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>

@@ -40,7 +40,7 @@ function ConvertFrom-PkgUri {
     }
     
     # Display results
-    #$queryParams.GetEnumerator() | ForEach-Object { Write-Output "$($_.Key) = $($_.Value)" }
+    #$queryParams.GetEnumerator() | ForEach-Object { Write-Host "$($_.Key) = $($_.Value)" }
   }
   #Download-Purl
   return [PSCustomObject]@{

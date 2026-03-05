@@ -1,51 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bom xmlns="http://cyclonedx.org/schema/bom/1.5" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://cyclonedx.org/schema/bom/1.5 https://cyclonedx.org/schema/bom-1.5.xsd">
 	<components>
-		<component type="library" bom-ref="xmlcalabash-3.0.40">
+		<component type="library" bom-ref="xmlcalabash-3">
 			<name>xmlcalabash</name>
 			<!-- not sure best way to do this, codeberg isn't officially defined in https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
-			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40</purl>
+			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.11</purl>
 			<externalReferences>
 				<reference type="distribution">
-					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip</url>
-					<hashes>
-						<hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
-					</hashes>
-				</reference>
-			</externalReferences>
-			<components>
-				<!-- components could just be artifacts, which seems to go against what an SBOM is -->
-				<component type="application">
-					<name>binary-dist</name>
-				</component>
-			</components>
-		</component>
-		<component type="library" bom-ref="xmlcalabash-3.0.24">
-			<name>xmlcalabash</name>
-			<!-- not sure best way to do this, codeberg isn't officially defined in https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
-			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24</purl>
-			<externalReferences>
-				<reference type="distribution">
-					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip</url>
-					<hashes>
-						<hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
-					</hashes>
-				</reference>
-			</externalReferences>
-			<components>
-				<!-- components could just be artifacts, which seems to go against what an SBOM is -->
-				<component type="application">
-					<name>binary-dist</name>
-				</component>
-			</components>
-		</component>
-		<component type="library" bom-ref="xmlcalabash-polyglot-3.0.24">
-			<name>xmlcalabash-polyglot</name>
-			<!-- not sure best way to do this, codeberg isn't officially defined in https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
-			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24</purl>
-			<externalReferences>
-				<reference type="distribution">
-					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=polyglot-3.0.24.zip</url>
+					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.11?filename=xmlcalabash-3.0.11.zip</url>
 					<hashes>
 						<hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
 					</hashes>
@@ -99,51 +61,17 @@
 			</externalReferences>						
 		</component>
 -->
-<component type="library" bom-ref="morganaxproc-1.8.2">
-	<name>morganaxproc</name>
-			<externalReferences>
-				<reference type="distribution">
-					<url>pkg:sourceforge/morganaxproc-IIIse@1.8.2?filename=MorganaXProc-IIIse-1.8.2/MorganaXProc-IIIse-1.8.2.zip</url>
-				</reference>
-			</externalReferences>
-			<hashes>
-				<hash alg="SHA-256">c12caae4a8ab14a68534e34def10ce73f75267f49592b31b8b6f767a80a3b417</hash>
-				<hash alg="SHA-1">e02d299dab296ba394c2e9f4357801bcbb4c4931</hash>
-			</hashes>
-			<purl>pkg:sourceforge/morganaxproc-IIIse@1.8.2</purl>
-			<properties>
-				<property name="rootZip">MorganaXProc-IIIse-1.8.2</property>
-			</properties>
-		</component>
-<component type="library" bom-ref="morganaxproc-1.8">
-	<name>morganaxproc</name>
-			<externalReferences>
-				<reference type="distribution">
-					<url>pkg:sourceforge/morganaxproc-IIIse@1.8?filename=MorganaXProc-IIIse-1.8/MorganaXProc-IIIse-1.8.zip</url>
-				</reference>
-			</externalReferences>
-			<hashes>
-				<hash alg="SHA-256">2BA1C4A57488429C734D80C32E4CE242A4F5230CAC20D2592D786873DCEEFA97</hash>
-			</hashes>
-			<purl>pkg:sourceforge/morganaxproc-IIIse@1.8</purl>
-			<properties>
-				<property name="rootZip">MorganaXProc-IIIse-1.8</property>
-			</properties>
-		</component>
 		<component type="library" bom-ref="morganaxproc-1.6">
 			<name>morganaxproc</name>
 			<externalReferences>
 				<reference type="distribution">
-					<url>pkg:sourceforge/morganaxproc-IIIse@1.6?filename=MorganaXProc-IIIse-1.6.7/MorganaXProc-IIIse-1.6.7.zip</url>					
+					<url>pkg:sourceforge/morganaxproc-IIIse@1.6?filename=MorganaXProc-IIIse-1.6.7/MorganaXProc-IIIse-1.6.7.zip</url>
 				</reference>
 			</externalReferences>
 			<hashes>
 				<hash alg="SHA-256">94c226d39a899248372f1aaef5df2bbfd4ee6439aa2142fa7d3c64d67a590792</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.6.7</purl>
-			<properties>
-				<property name="rootZip">MorganaXProc-IIIse-1.6.7</property>
-			</properties>
 		</component>
 		<component type="library" bom-ref="morganaxproc-1.5">
 			<name>morganaxproc</name>
@@ -237,8 +165,7 @@
 			<aggregate>complete</aggregate>
 			<dependencies>
 				<dependency ref="markup-blitz"/>
-				<dependency ref="xmlcalabash-3.0.24"/>
-				<dependency ref="xmlcalabash-polyglot-3.0.24"/>
+				<dependency ref="xmlcalabash-3"/>
 				<dependency ref="coffeefilter"/>
 				<dependency ref="coffeegrinder"/>
 				<dependency ref="xmlresolver-mvn"/>
@@ -255,7 +182,7 @@
 				<dependency ref="xerces"/>
 				<dependency ref="schXslt"/>
 				<dependency ref="saxon-he-11"/>
-				<dependency ref="xmlcalabash-3.0.24"/>
+				<dependency ref="xmlcalabash-3"/>
 			</dependencies>
 		</composition>
 		<composition bom-ref="modern-cdf-test-method">
@@ -267,14 +194,7 @@
 				<dependency ref="schXslt"/>
 				<dependency ref="saxon-he-11"/>
 				<dependency ref="saxon-ee-12"/>
-				<dependency ref="xmlcalabash-3.0.24"/>
-			</dependencies>
-		</composition>
-		<composition bom-ref="pester-tests">
-			<aggregate>complete</aggregate>
-			<dependencies>				
-				<dependency ref="xmlcalabash-3.0.24"/>
-				<dependency ref="morganaxproc-1.8.2"/>
+				<dependency ref="xmlcalabash-3"/>
 			</dependencies>
 		</composition>
 	</compositions>
