@@ -66,7 +66,7 @@ function Install-Package {
                 Rename-Item -Path $extractedDir -NewName "$Name-$Version" -Force
             }
             else {
-                Write-Host "Expected zip root directory '$ZipRoot' not found after extraction."
+                Write-Warning "Expected zip root directory '$ZipRoot' not found after extraction."
             }
         }
         else {

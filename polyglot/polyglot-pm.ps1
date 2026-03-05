@@ -22,7 +22,6 @@ function Copy-SoftwareComposition {
   param(
     [Parameter(Mandatory = $true)]
     [string] $sbomPath,
-    [Parameter(Mandatory = $true)]
     [string] $targetComposition,
     [string] $localRepository = (Get-LocalRepositoryPath)    
   )
@@ -35,10 +34,21 @@ function Copy-SoftwareComposition {
     exit 1
   }
   $bom = $xmlContent.bom;
-  $composition = $bom.compositions.composition | Where-Object { $_."bom-ref" -eq $targetComposition }
-  if (!$composition) {
-    Write-Host "Fatal: Target composition $targetComposition not found" -ForegroundColor Red
-    exit 1
+
+  if (-not $targetComposition) {
+    # Pick the first composition in the SBOM
+    $allCompositions = @($bom.compositions.composition)
+    if ($allCompositions.Count -eq 0 -or $null -eq $allCompositions[0]) {
+      throw "No compositions found in SBOM '$sbomPath'."
+    }
+    $composition = $allCompositions[0]
+    Write-Verbose "No targetComposition specified; using first composition '$($composition."bom-ref")'."
+  }
+  else {
+    $composition = $bom.compositions.composition | Where-Object { $_."bom-ref" -eq $targetComposition }
+    if (!$composition) {
+      throw "Target composition '$targetComposition' not found in SBOM '$sbomPath'."
+    }
   }
   
   $composition.dependencies.dependency | ForEach-Object {

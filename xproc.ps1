@@ -1,40 +1,52 @@
-
+<#
+.PARAMETER StdOut
+The standard output from the processor, which may contain one or more XML documents, either as a single document, a sequence of documents separated by XmlCalabash-style headers and trailers, or as multipart MIME output.
+.NOTES
+If multiple documents are encountered without mime/type, they are assumed to be XML.
+.OUTPUTS
+One or more documents in their native type as possible. See `ConvertTo-NativeType` for details on how MIME parts are converted to native types.
+#>
 function Get-MultiXmlDocuments {
     param (
         [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
         [string]$StdOut
     )
     
-    # Detect multipart MIME: first non-empty line starts with "--"
-    $firstLine = ($StdOut -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -First 1)
-    if ($firstLine -match '^--(.+)') {
-        $boundary = $matches[1] -replace '--$', ''
-        $parts = Parse-MimeMultipart -MimeString $StdOut -Boundary $boundary
-        $results = foreach ($part in $parts) {
-            ConvertTo-NativeType -MimePart $part
-        }
-        return $results
-    }
-
-    # XmlCalabash standard out format
     $headerPattern = '^=== result :: \d+ :: .+?={10,}\r?\n'
     $trailerPattern = '^={72,}\r?\n?'
-    
-    # If no headers, treat as single document
-    if (-not [regex]::IsMatch($StdOut, $headerPattern, 'Multiline')) {
-        return , ($StdOut)
+    $firstLine = ($StdOut -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -First 1)
+
+    $output = if ($firstLine -match '^--(.+)') {
+        # Multipart MIME output
+        $boundary = $matches[1] -replace '--$', ''
+        $parts = Parse-MimeMultipart -MimeString $StdOut -Boundary $boundary
+        foreach ($part in $parts) {
+            ConvertTo-NativeType -MimePart $part
+        }
     }
-    
-    # Split on headers, ignore empty entries
-    $docs = [regex]::Split($StdOut, $headerPattern, 'Multiline') | Where-Object { $_.Trim() }
-    
-    # Remove trailers and convert each doc via ConvertTo-NativeType
-    $xmlDocs = foreach ($doc in $docs) {
-        $clean = [regex]::Replace($doc, $trailerPattern, '', 'Multiline')
-        $mimePart = @{ Headers = @{ 'Content-Type' = 'application/xml' }; Content = $clean.Trim() }
-        ConvertTo-NativeType -MimePart $mimePart
+    elseif ([regex]::IsMatch($StdOut, $headerPattern, 'Multiline')) {
+        # XmlCalabash standard out
+        $docs = [regex]::Split($StdOut, $headerPattern, 'Multiline') | Where-Object { $_.Trim() }
+        foreach ($doc in $docs) {
+            $clean = [regex]::Replace($doc, $trailerPattern, '', 'Multiline')
+            $mimePart = @{ Headers = @{ 'Content-Type' = 'application/xml' }; Content = $clean.Trim() }
+            ConvertTo-NativeType -MimePart $mimePart
+        }
     }
-    return $xmlDocs
+    elseif (([regex]::Matches($StdOut, '<\?xml')).Count -gt 1) {
+        # Multiple concatenated XML documents (e.g. MorganaXProc stdout for sequences)
+        $parts = [regex]::Split($StdOut.Trim(), '(?=<\?xml)') | Where-Object { $_.Trim() }
+        foreach ($part in $parts) {
+            $mimePart = @{ Headers = @{ 'Content-Type' = 'application/xml' }; Content = $part.Trim() }
+            ConvertTo-NativeType -MimePart $mimePart
+        }
+    }
+    else {
+        # Single document
+        , ($StdOut)
+    }
+
+    return $output
 }
 <#
 .SYNOPSIS
@@ -172,8 +184,8 @@ function Invoke-XmlCalabash {
     $xcArgs += @($pipeline)
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
-    #Write-Verbose "args to processor is $xcArgs"
-
+    Write-Debug "args to processor is $xcArgs"
+    Write-Debug "Classpath: $cp"
     [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 
     $stdinString = $null
@@ -275,10 +287,6 @@ function Invoke-MorganaXProc {
         $xcArgs += @("--catalog:`"$catalog`"")
     }
 
-    #handle STDIN
-    if ($PipeInput) {
-        $xcArgs += @("--pipe")
-    }
 
     if ($passthrough) {
         $xcArgs += $passthrough
@@ -313,37 +321,31 @@ function Invoke-MorganaXProc {
 
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
-    #Write-Verbose "args to processor is $xcArgs"
+    Write-Debug "args to processor is $xcArgs"
 
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-    #Write-Host "Invoking java -cp $cp com.xml_project.morganaxproc3.XProcEngine $xcArgs"
-    $stdinString = $null
+
+    # Morgana does not support --pipe; write pipeline input to a temp file and pass via -input:source
     if ($PipeInput -and $null -ne $InputObject) {
-        $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
+        $stdinContent = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
+        $stdinTempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xml")
+        [System.IO.File]::WriteAllText($stdinTempFile, $stdinContent, [System.Text.UTF8Encoding]::new())
+        $xcArgs += @("-input:source=`"$stdinTempFile`"")
     }
 
-    if ($null -ne $stdinString) {
-        if ($MergeOutput) {
-            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
-        }
-        else {
-            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
-        }
+    if ($MergeOutput) {
+        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
     }
     else {
-        if ($MergeOutput) {
-            $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
-        }
-        else {
-            $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
-        }
+        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
     }
     if ($output -is [array]) {
-        $output = $output -join "`n"
+        return $output -join "`n" | Get-MultiXmlDocuments
     }
-    #Write-Host $output
-    return $output
+    else {
+        return $output | Get-MultiXmlDocuments
+    }
 } 
 
 function Get-PXClassPath {

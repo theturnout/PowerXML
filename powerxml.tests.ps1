@@ -10,7 +10,7 @@ BeforeAll {
         $env:polyglotpm = $env:POWERXML_TEST_CACHE
     }
     else {
-        $env:polyglotpm = Join-Path $env:TEMP "powerxml-test-deps"
+        $env:polyglotpm = Join-Path ($env:TEMP ?? $env:TMPDIR ?? "/tmp") "powerxml-test-deps"
     }
     if (-not (Test-Path $env:polyglotpm)) {
         New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
@@ -153,17 +153,17 @@ Describe 'Transform-Xml' {
             $xmlOutput | Should -BeLike "*Doc1*"
             $xmlOutput | Should -BeLike "*Doc2*"
         }
-        It "$($_.Name) - Should support document sequences on input port - STDOUT" {
-            $xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
-            $xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"            
+        It "$($_.Name) - Should support document sequences on input port - object-based" {
+            [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
+            [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"            
             $result = Transform-Xml -targetComposition "pester-tests" -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($xmlInput1, $xmlInput2) }
-            $result | Should -BeLike "*Doc1*"
-            $result | Should -BeLike "*Doc2*"            
+            # result is XmlDocument
+            $result[0] | Should -BeOfType [xml]
+            $result[1] | Should -BeOfType [xml]            
         }
-            
+
+
     }
-
-
     # It 'Should place output on the pipeline' {
     #     $outputFileName = Join-Path $global:TestDir "output2.xml"
     #     [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
@@ -172,6 +172,76 @@ Describe 'Transform-Xml' {
     #     [xml]$xmlOutput = Get-Content $outputFileName -Raw
     #     $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
     # }
+}
+
+Describe 'Transform-Xml parameter handling' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    It 'Should have an sbomPath parameter' {
+        $param = (Get-Command Transform-Xml).Parameters['sbomPath']
+        $param | Should -Not -BeNullOrEmpty
+        $param.ParameterType.Name | Should -Be 'String'
+    }
+
+    It 'Should have a non-mandatory targetComposition parameter' {
+        $param = (Get-Command Transform-Xml).Parameters['targetComposition']
+        $param | Should -Not -BeNullOrEmpty
+        $param.Attributes | Where-Object {
+            $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory
+        } | Should -BeNullOrEmpty
+    }
+
+    It 'Should accept a custom sbomPath and run pipeline' {
+        # The pester-tests composition in the project SBOM works with default path;
+        # verify we can point sbomPath to the test_data copy and it still resolves.
+        $customSbom = "$PSScriptRoot/test_data/sbom.xml"
+        $result = Transform-Xml -sbomPath $customSbom `
+            -targetComposition 'pester-tests' `
+            -Processor 'xmlcalabash' `
+            -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+        $result | Should -BeLike "*Hello, World!"
+    }
+
+    It 'Should auto-select first composition when targetComposition is omitted' {
+        # Build a minimal SBOM whose first composition is "pester-tests" pointing at
+        # the same components as the real one, so the pipeline actually runs.
+        $sbomContent = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="xmlcalabash-3.0.24">
+            <name>xmlcalabash</name>
+            <purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24</purl>
+            <externalReferences>
+                <reference type="distribution">
+                    <url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip</url>
+                    <hashes>
+                        <hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
+                    </hashes>
+                </reference>
+            </externalReferences>
+        </component>
+    </components>
+    <compositions>
+        <composition bom-ref="auto-first">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="xmlcalabash-3.0.24"/>
+            </dependencies>
+        </composition>
+    </compositions>
+</bom>
+'@
+        $tempSbom = Join-Path $TestDrive 'auto-first-sbom.xml'
+        Set-Content -Path $tempSbom -Value $sbomContent -Encoding UTF8
+
+        $result = Transform-Xml -sbomPath $tempSbom `
+            -Processor 'xmlcalabash' `
+            -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+        $result | Should -BeLike "*Hello, World!"
+    }
 }
 
 Describe 'Get-PXClassPath' {

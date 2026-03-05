@@ -295,10 +295,23 @@ function Invoke-XsltprocXslt {
     }
     
     $xsltprocArgs = @()
-    
+
+    # xsltproc (libxslt) is a Unix tool; on Windows its I/O layer rejects mixed-separator
+    # paths (e.g. D:\foo/bar.xml). Resolve to an absolute path and use forward slashes.
+    $resolvedInput    = [System.IO.Path]::GetFullPath($InputXml)
+    $resolvedStylesheet = [System.IO.Path]::GetFullPath($Stylesheet)
+    if ($IsWindows) {
+        $resolvedInput      = $resolvedInput.Replace('\', '/')
+        $resolvedStylesheet = $resolvedStylesheet.Replace('\', '/')
+    }
+
     if ($OutputFile) {
+        $resolvedOutput = [System.IO.Path]::GetFullPath($OutputFile)
+        if ($IsWindows) {
+            $resolvedOutput = $resolvedOutput.Replace('\', '/')
+        }
         $xsltprocArgs += '--output'
-        $xsltprocArgs += $OutputFile
+        $xsltprocArgs += $resolvedOutput
     }
     
     if ($Parameters) {
@@ -309,8 +322,8 @@ function Invoke-XsltprocXslt {
         }
     }
     
-    $xsltprocArgs += $Stylesheet
-    $xsltprocArgs += $InputXml
+    $xsltprocArgs += $resolvedStylesheet
+    $xsltprocArgs += $resolvedInput
     
     $procResult = & xsltproc @xsltprocArgs 2>&1
     

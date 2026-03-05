@@ -5,10 +5,11 @@
     Path to the test files. Default is current directory.
 .PARAMETER ModulePath
     Path to the module source code for code coverage analysis. Default is current directory.
-.PARAMETER CoverageOutput
-    Path to save the code coverage report in JSON format. Default is "./coverage.json".
+.PARAMETER OutputPath
+    Path to save the test results and code coverage report. Default is "./test_out".
 .PARAMETER NoCache
-    If set, will not use any cached PolyglotPM repositories and will always fetch from source.
+    If set, will not use any cached PolyglotPM repositories and will always fetch from source. Avoid this unless you 
+    want to test package retrieve logic or ensure you have the latest dependencies.
 .PARAMETER NoCoverage
     If set, will disable code coverage collection.
 #>
@@ -20,6 +21,9 @@ param(
     [switch]$NoCoverage,
     [switch]$RealNetwork
 )
+# Save previous environment variable values
+$prevTestCache = $env:POWERXML_TEST_CACHE
+$prevRealNetwork = $env:POWERXML_REAL_NETWORK
 if ($NoCache) {
     $env:POWERXML_TEST_CACHE = "TestDrive:/"
 }
@@ -64,3 +68,5 @@ if ($pesterSupportsTiming -and $results.Timing) {
 else {
     Write-Host ("Test duration: {0}" -f $stopwatch.Elapsed)
 }
+$env:POWERXML_TEST_CACHE = $prevTestCache
+$env:POWERXML_REAL_NETWORK = $prevRealNetwork

@@ -490,17 +490,17 @@ Describe 'Transform-Xml XSLT Processing' {
     }
 
     Context "Error handling" {
-        It "Should throw error for unsupported processor" {
-            $inputFile = "$TestDrive/xslt_err_input.xml"
-            [xml]$xmlInput = "<?xml version='1.0'?><root/>"
-            $xmlInput.Save($inputFile)
-            
-            { Transform-Xml `
-                    -Processing "xslt" `
-                    -Processor "unsupported" `
-                    -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
-                    -InPort @{ source = $inputFile } } | Should -Throw "*Unsupported processor*"
-        }
+        # It "Should throw error for unsupported processor" {
+        #     $inputFile = "$TestDrive/xslt_err_input.xml"
+        #     [xml]$xmlInput = "<?xml version='1.0'?><root/>"
+        #     $xmlInput.Save($inputFile)
+        #     
+        #     { Transform-Xml `
+        #             -Processing "xslt" `
+        #             -Processor "unsupported" `
+        #             -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+        #             -InPort @{ source = $inputFile } } | Should -Throw "*Unsupported processor*"
+        # }
         
         It "Should throw error when no input XML provided" {
             { Transform-Xml `

@@ -1,4 +1,4 @@
-# PowerXML
+# PowerXML - XProc and XSLT Processing Toolkit for PowerShell (Core and Windows)
 
 A PowerShell toolkit for XML transformations using XProc 3.0 and XSLT processors with integrated dependency management.
 
@@ -8,35 +8,37 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 
 **XProc 3.0 Processors:**
 - [XML Calabash 3](https://xmlcalabash.com/) (default)
-- [Morgana XProc IIIse](https://www.xml-project.com/morganaxproc-iiise/)
+- [Morgana XProc IIIse](https://www.xml-project.com/morganaxproc-iii.html)
 
 **XSLT Processors:**
 - .NET `XslCompiledTransform` (XSLT 1.0)
 - MSXML 6.0 COM (Windows only, XSLT 1.0)
-- AltovaXML COM (Windows only, XSLT 2.0)
+- AltovaXML COM (Windows only, XSLT 2.0, Schema-aware)
+- [xsltproc](https://man.freebsd.org/cgi/man.cgi?query=xsltproc&sektion=1&manpath=FreeBSD+5.2.1-RELEASE+and+Ports) (libxslt, XSLT 1.0)
 
 ## Features
 
-- **Unified API** – Single `Transform-Xml` function supports both XProc and XSLT processing
+- **Unified API** – Single `Transform-Xml` CmdLet supports both XProc and XSLT processing
 - **Flexible Input** – Accept file paths, XML strings, or .NET XML objects as input
 - **Port Binding** – Route multiple inputs/outputs through named ports
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
-- **MIME Multipart Parsing** – Parse and convert multipart responses to native PowerShell types
 
 ## Requirements
 
-- [PowerShell](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.5) Core 7.5+
+- Windows PowerShell or [PowerShell Core 7.5+](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.5) 
 - [Java JDK 17](https://learn.microsoft.com/en-us/java/openjdk/download)+ (for XProc processors)
 
 ## Installation
 
 ```powershell
 # Clone the repository
-git clone https://github.com/your-username/PowerXML.git
+git clone https://github.com/theturnout/PowerXML.git
 
 # Import the module
 Import-Module ./PowerXML/powerxml.psm1 -Force
 ```
+
+Future releases will be available via the PowerShell Gallery.
 
 ## Quick Start
 
@@ -94,7 +96,7 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 |-----------|------|-------------|
 | `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object) |
 | `-Processing` | string | Processing type: `xproc` (default) or `xslt` |
-| `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova` |
+| `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc` |
 | `-InPort` | hashtable | Input port bindings: `@{ portName = "file.xml" }` |
 | `-OutPort` | hashtable | Output port bindings: `@{ portName = "output.xml" }` |
 | `-Options` | hashtable | Pipeline options/parameters |
@@ -103,17 +105,6 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-catalog` | string | XML catalog file path |
 | `-passthrough` | array | Arguments passed directly to the processor |
 | `-passthroughJava` | array | Arguments passed to the JVM |
-
-### Parse-MimeMultipart
-
-Parses MIME multipart messages into structured parts.
-
-```powershell
-$parts = Parse-MimeMultipart -MimeString $response -Boundary "----boundary123"
-$parts | ConvertTo-NativeType | ForEach-Object {
-    # Process each part as native type (XmlDocument, PSObject, string, etc.)
-}
-```
 
 ## Dependency Management
 
@@ -149,27 +140,39 @@ Transform-Xml -Pipeline "./test.xpl" -targetComposition "pester-tests"
 
 ```
 PowerXML/
-├── powerxml.ps1        # Core transformation functions
 ├── powerxml.psm1       # Module definition
+├── powerxml.psd1       # Module manifest
+├── powerxml.ps1        # Core Transform-Xml function
 ├── xproc.ps1           # XProc processor wrappers (XML Calabash, Morgana)
-├── xslt.ps1            # XSLT processor wrappers (.NET, MSXML, Altova)
-├── utilities.ps1       # MIME parsing, retry logic, helpers
-├── sbom.xml            # CycloneDX dependency manifest
+├── xslt.ps1            # XSLT processor wrappers (.NET, MSXML, Altova, xsltproc)
+├── utilities.ps1       # MIME parsing, type conversion, helpers
+├── sbom.xml            # CycloneDX dependency manifest (default)
+├── test-harness.ps1    # Pester test runner with code coverage
 ├── polyglot/           # Package manager module
 │   ├── polyglot-pm.ps1    # Main package manager
-│   ├── download-deps.ps1  # Download utilities for GitHub/SourceForge
+│   ├── cyclonedx.ps1      # CycloneDX SBOM manipulation
+│   ├── download-deps.ps1  # Download utilities (GitHub, Codeberg, Maven, SourceForge)
+│   ├── install-package.ps1 # Package installation and extraction
+│   ├── sbom.ps1           # SBOM validation
 │   ├── pom.ps1            # Maven POM resolution
 │   └── purl.ps1           # Package URL (purl) parsing
-└── test_data/          # Sample pipelines and test data
+└── test_data/          # Sample pipelines, stylesheets, and test fixtures
 ```
 
 ## Testing
 
-PowerXML uses Pester for testing:
+PowerXML uses [Pester](https://pester.dev/) for testing. Run the full suite with code coverage:
+
+```powershell
+pwsh ./test-harness.ps1
+```
+
+Or run individual test files:
 
 ```powershell
 Invoke-Pester ./powerxml.tests.ps1
 Invoke-Pester ./xslt.tests.ps1
+Invoke-Pester ./xproc.tests.ps1
 Invoke-Pester ./utilities.tests.ps1
 ```
 

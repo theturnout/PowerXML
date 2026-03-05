@@ -1,4 +1,4 @@
-#. "$PSScriptRoot\cyclonedx.ps1"
+. "$PSScriptRoot\cyclonedx.ps1"
 . "$PSScriptRoot\download-deps.ps1"
 . "$PSScriptRoot\install-package.ps1"
 . "$PSScriptRoot\polyglot-pm.ps1"

@@ -78,5 +78,99 @@ Describe 'SBOM Support' {
     # Add more specific tests for Copy-SoftwareComposition here
 }
 
+Describe 'Copy-SoftwareComposition composition selection' {
+    BeforeAll {
+        # Minimal SBOM with two compositions
+        $twoCompXml = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="comp-a">
+            <name>comp-a</name>
+            <purl>pkg:maven/org.example/a@1.0</purl>
+        </component>
+        <component type="library" bom-ref="comp-b">
+            <name>comp-b</name>
+            <purl>pkg:maven/org.example/b@2.0</purl>
+        </component>
+    </components>
+    <compositions>
+        <composition bom-ref="first">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="comp-a"/>
+            </dependencies>
+        </composition>
+        <composition bom-ref="second">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="comp-b"/>
+            </dependencies>
+        </composition>
+    </compositions>
+</bom>
+'@
+        $script:twoCompSbom = Join-Path $TestDrive 'two-comp-sbom.xml'
+        Set-Content -Path $script:twoCompSbom -Value $twoCompXml -Encoding UTF8
+
+        # SBOM with no compositions
+        $noCompXml = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="comp-a">
+            <name>comp-a</name>
+            <purl>pkg:maven/org.example/a@1.0</purl>
+        </component>
+    </components>
+</bom>
+'@
+        $script:noCompSbom = Join-Path $TestDrive 'no-comp-sbom.xml'
+        Set-Content -Path $script:noCompSbom -Value $noCompXml -Encoding UTF8
+    }
+
+    It 'Should use first composition when targetComposition is not specified' {
+        # Mock Get-PackageFromPurl so we don't actually download anything
+        Mock Get-PackageFromPurl { return @("$localRepository\fake") }
+        Mock Install-Package { return $DownloadedPath }
+
+        $result = Copy-SoftwareComposition `
+            -sbomPath $script:twoCompSbom `
+            -localRepository $env:polyglotpm -Verbose 4>&1
+
+        # Verbose stream should mention the first composition's bom-ref
+        $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
+        $verboseMessages | Should -Not -BeNullOrEmpty
+        ($verboseMessages | Out-String) | Should -BeLike "*first*"
+    }
+
+    It 'Should use explicit targetComposition when provided' {
+        Mock Get-PackageFromPurl { return @("$localRepository\fake") }
+        Mock Install-Package { return $DownloadedPath }
+
+        $result = Copy-SoftwareComposition `
+            -sbomPath $script:twoCompSbom `
+            -targetComposition 'second' `
+            -localRepository $env:polyglotpm -Verbose 4>&1
+
+        # Should NOT emit the auto-select verbose message
+        $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
+        $autoMsg = $verboseMessages | Where-Object { $_.Message -like '*No targetComposition specified*' }
+        $autoMsg | Should -BeNullOrEmpty
+    }
+
+    It 'Should throw when targetComposition is not specified and SBOM has no compositions' {
+        { Copy-SoftwareComposition `
+            -sbomPath $script:noCompSbom `
+            -localRepository $env:polyglotpm } | Should -Throw '*No compositions found*'
+    }
+
+    It 'Should throw when explicit targetComposition is not found' {
+        { Copy-SoftwareComposition `
+            -sbomPath $script:twoCompSbom `
+            -targetComposition 'nonexistent' `
+            -localRepository $env:polyglotpm } | Should -Throw '*not found*'
+    }
+}
 
 # Add similar blocks for other scripts/modules as needed
