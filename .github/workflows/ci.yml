@@ -47,8 +47,11 @@ jobs:
 
       - name: Package module (zip)
         run: |
-          New-Item -ItemType Directory -Path out -Force | Out-Null
-          Copy-Item -Recurse $env:MODULE_PATH out
+          $dest = "out"
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          # Copy module files (exclude test artifacts, CI config, and the out dir itself)
+          Copy-Item -Path *.ps1, *.psd1, *.psm1, sbom.xml -Destination $dest
+          Copy-Item -Recurse -Path polyglot -Destination $dest
         shell: pwsh
 
       - name: Upload artifact
