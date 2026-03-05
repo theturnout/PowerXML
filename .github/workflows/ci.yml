@@ -11,7 +11,7 @@ jobs:
 
     env:
       MODULE_NAME: powerxml
-      MODULE_PATH: powerxml
+      MODULE_PATH: .
 
     steps:
       - name: Checkout
