@@ -131,8 +131,8 @@ Describe 'Copy-SoftwareComposition composition selection' {
 
     It 'Should use first composition when targetComposition is not specified' {
         # Mock Get-PackageFromPurl so we don't actually download anything
-        Mock Get-PackageFromPurl { return @("$localRepository\fake") }
-        Mock Install-Package { return $DownloadedPath }
+        Mock Get-PackageFromPurl { return @("$localRepository\fake") } -ModuleName polyglot
+        Mock Install-Package { return $DownloadedPath } -ModuleName polyglot
 
         $result = Copy-SoftwareComposition `
             -sbomPath $script:twoCompSbom `
@@ -145,8 +145,8 @@ Describe 'Copy-SoftwareComposition composition selection' {
     }
 
     It 'Should use explicit targetComposition when provided' {
-        Mock Get-PackageFromPurl { return @("$localRepository\fake") }
-        Mock Install-Package { return $DownloadedPath }
+        Mock Get-PackageFromPurl { return @("$localRepository\fake") } -ModuleName polyglot
+        Mock Install-Package { return $DownloadedPath } -ModuleName polyglot
 
         $result = Copy-SoftwareComposition `
             -sbomPath $script:twoCompSbom `
