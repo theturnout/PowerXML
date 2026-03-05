@@ -82,7 +82,6 @@ function Resolve-XmlInput {
         return $InputObject
     }
 }
-# Probably should all be starting UpperCase
 <#
 .SYNOPSIS
 Transforms inputs using XML technologies
@@ -98,8 +97,10 @@ The target composition in the SBOM to use to determine which packages are requir
 If not specified, the first composition in the SBOM is used.
 .PARAMETER inPort
 A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
-.PARAMETER inPort
+.PARAMETER outPort
 A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.xml}
+.PARAMETER catalog
+The path to an XML catalog file to use for resolving XML resources.
 .PARAMETER passthrough
 An array of parameters passed directly to the processor.
 .PARAMETER passthroughJava
