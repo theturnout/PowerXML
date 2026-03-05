@@ -52,6 +52,7 @@ jobs:
           # Copy module files (exclude test artifacts, CI config, and the out dir itself)
           Copy-Item -Path *.ps1, *.psd1, *.psm1, sbom.xml -Destination $dest
           Copy-Item -Recurse -Path polyglot -Destination $dest
+          Copy-Item -Recurse -Path test_data -Destination $dest
         shell: pwsh
 
       - name: Upload artifact

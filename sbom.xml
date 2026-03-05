@@ -9,7 +9,7 @@
 				<reference type="distribution">
 					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip</url>
 					<hashes>
-						<hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
+<hash alg="SHA-256">d7eda14c9ef5e1058b940ba7bdb062aa8bc1aaba165cef0e74d56240abe42c7c</hash>
 					</hashes>
 				</reference>
 			</externalReferences>
@@ -28,7 +28,7 @@
 				<reference type="distribution">
 					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip</url>
 					<hashes>
-						<hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
+<hash alg="SHA-256">384204469a0806fdefd021bd65242cca73a5395f664a4ac80bfb2c9c1c316c88</hash>
 					</hashes>
 				</reference>
 			</externalReferences>
@@ -47,7 +47,7 @@
 				<reference type="distribution">
 					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=polyglot-3.0.24.zip</url>
 					<hashes>
-						<hash alg="SHA-256">67e8fa31b76eb5cded20482b711a415e4db9a9d3fce160ed15e4612c333281db</hash>
+<hash alg="SHA-256">abc03fe9c76c0d7364f53eb4b55ee4db8c559826eacfa23d69b1de3d3ab07a79</hash>
 					</hashes>
 				</reference>
 			</externalReferences>
@@ -123,7 +123,7 @@
 				</reference>
 			</externalReferences>
 			<hashes>
-				<hash alg="SHA-256">2BA1C4A57488429C734D80C32E4CE242A4F5230CAC20D2592D786873DCEEFA97</hash>
+<hash alg="SHA-256">2db75008e9ff378289cebb77ceea78a846502286ec167f73e2d346193d53b7fe</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.8</purl>
 			<properties>
@@ -153,7 +153,7 @@
 				</reference>
 			</externalReferences>
 			<hashes>
-				<hash alg="SHA-256">2BA1C4A57488429C734D80C32E4CE242A4F5230CAC20D2592D786873DCEEFA97</hash>
+<hash alg="SHA-256">4e3ae095b9a566991342575da6c5afc6181b74da61707fcd57a508f24f28037a</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.5</purl>
 		</component>
@@ -165,7 +165,7 @@
 				</reference>
 			</externalReferences>
 			<hashes>
-				<hash alg="SHA-256">2BA1C4A57488429C734D80C32E4CE242A4F5230CAC20D2592D786873DCEEFA97</hash>
+<hash alg="SHA-256">4e3ae095b9a566991342575da6c5afc6181b74da61707fcd57a508f24f28037a</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.5</purl>
 		</component>
@@ -201,14 +201,14 @@
 		<component type="library" bom-ref="schXslt">
 			<name>schXslt</name>
 			<hashes>
-				<hash alg="SHA-256">FEA69795F40CBCAC4AF05AE78F480D1C426BBD402DB4ACB9BD06B0117C730794</hash>
+<hash alg="SHA-256">4f4f21edab7b37f96ad59ae12a344d3510f1092ac46b6d81a4efa0120b73cb58</hash>
 			</hashes>
 			<purl>pkg:maven/name.dmaus.schxslt/schxslt@1.10.1</purl>
 		</component>
 		<component type="library" bom-ref="saxon-he-11">
 			<name>Saxon-HE</name>
 			<hashes>
-				<hash alg="SHA-256">FEA69795F40CBCAC4AF05AE78F480D1C426BBD402DB4ACB9BD06B0117C730794</hash>
+<hash alg="SHA-256">77caec6ca2753321d40f5e203abdda2172b15c5d40643cafedc87e1b979da82d</hash>
 			</hashes>
 			<purl>pkg:maven/net.sf.saxon/Saxon-HE@11.5</purl>
 		</component>
@@ -226,6 +226,13 @@
 		</component>
 	</components>
 	<compositions>
+		<composition bom-ref="pester-tests">
+			<aggregate>complete</aggregate>
+			<dependencies>				
+				<dependency ref="xmlcalabash-3.0.24"/>
+				<dependency ref="morganaxproc-1.8.2"/>
+			</dependencies>
+		</composition>
 		<composition bom-ref="saxon-he">
 			<aggregate>complete</aggregate>
 			<dependencies>
@@ -238,13 +245,13 @@
 			<dependencies>
 				<dependency ref="markup-blitz"/>
 				<dependency ref="xmlcalabash-3.0.24"/>
+				<dependency ref="morganaxproc-1.8.2"/>
 				<dependency ref="xmlcalabash-polyglot-3.0.24"/>
 				<dependency ref="coffeefilter"/>
 				<dependency ref="coffeegrinder"/>
 				<dependency ref="xmlresolver-mvn"/>
 				<dependency ref="xerces"/>
 				<dependency ref="schXslt"/>
-				<dependency ref="saxon-he-11"/>
 			</dependencies>
 		</composition>
 		<composition bom-ref="classic-cdf-test-method">
@@ -268,13 +275,6 @@
 				<dependency ref="saxon-he-11"/>
 				<dependency ref="saxon-ee-12"/>
 				<dependency ref="xmlcalabash-3.0.24"/>
-			</dependencies>
-		</composition>
-		<composition bom-ref="pester-tests">
-			<aggregate>complete</aggregate>
-			<dependencies>				
-				<dependency ref="xmlcalabash-3.0.24"/>
-				<dependency ref="morganaxproc-1.8.2"/>
 			</dependencies>
 		</composition>
 	</compositions>

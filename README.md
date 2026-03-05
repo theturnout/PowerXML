@@ -13,7 +13,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 **XSLT Processors:**
 - .NET `XslCompiledTransform` (XSLT 1.0)
 - MSXML 6.0 COM (Windows only, XSLT 1.0)
-- AltovaXML COM (Windows only, XSLT 2.0, Schema-aware)
+- AltovaXML Community COM (Windows only, XSLT 2.0, Schema-aware)
 - [xsltproc](https://man.freebsd.org/cgi/man.cgi?query=xsltproc&sektion=1&manpath=FreeBSD+5.2.1-RELEASE+and+Ports) (libxslt, XSLT 1.0)
 
 ## Features
@@ -38,7 +38,7 @@ git clone https://github.com/theturnout/PowerXML.git
 Import-Module ./PowerXML/powerxml.psm1 -Force
 ```
 
-Future releases will be available via the PowerShell Gallery.
+Future releases will be available via package manager.
 
 ## Quick Start
 
@@ -85,6 +85,7 @@ $xmlInput = "<root><item>Hello</item></root>"
 Transform-Xml -Pipeline "./transform.xpl" `
     -InPort @{ source = $xmlInput }
 ```
+See [USAGE.md](USAGE.md) for more examples and advanced usage scenarios.
 
 ## API Reference
 
