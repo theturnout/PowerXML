@@ -218,3 +218,46 @@ function Copy-GitHubRelease {
     }
 }
 
+<#
+.SYNOPSIS
+    Resolves the latest release version for a package from its hosting platform API.
+.PARAMETER Type
+    The package type (e.g., "github", "codeberg").
+.PARAMETER Namespace
+    The repository owner/namespace.
+.PARAMETER Name
+    The repository/package name.
+.PARAMETER ApiPath
+    The base API URL. Defaults to "https://api.github.com".
+.OUTPUTS
+    The tag_name string of the latest release, or $null if the type is unsupported
+    or the API call fails.
+#>
+function Resolve-LatestVersion {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Type,
+        [Parameter(Mandatory = $true)]
+        [string]$Namespace,
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [string]$ApiPath = "https://api.github.com"
+    )
+
+    if ($Type -notin @("github", "codeberg")) {
+        Write-Warning "GetLatest is not supported for package type '$Type'. Using pinned version."
+        return $null
+    }
+
+    $url = "$ApiPath/repos/$Namespace/$Name/releases/latest"
+    try {
+        $response = Invoke-RestMethod -Uri $url -UseBasicParsing
+        return $response.tag_name
+    }
+    catch {
+        Write-Warning "Failed to resolve latest version for $Namespace/${Name}: $($_.Exception.Message)"
+        return $null
+    }
+}
+

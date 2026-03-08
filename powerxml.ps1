@@ -89,12 +89,12 @@ Transforms inputs using XML technologies
 The kind of processing to run. Default xproc.
 .PARAMETER processor
 The specific processor to use.
-.PARAMETER sbomPath
-The path (or URI) to a CycloneDX SBOM XML file that declares software compositions.
-Defaults to the sbom.xml bundled with PowerXML.
-.PARAMETER targetComposition
-The target composition in the SBOM to use to determine which packages are required to run the code.
-If not specified, the first composition in the SBOM is used.
+.PARAMETER PackageResolution
+A hashtable that groups polyglot package manager settings for XProc processing:
+  sbomPath          - Path to a CycloneDX SBOM XML file. Defaults to the bundled sbom.xml.
+  targetComposition - The composition in the SBOM to resolve. Defaults to the first composition.
+  GetLatest         - When $true, resolves the latest version for supported package types
+                      (codeberg, github) via their release API, replacing the SBOM-pinned version.
 .PARAMETER inPort
 A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
 .PARAMETER outPort
@@ -119,8 +119,7 @@ function Transform-Xml {
         $processing = "xproc",
         [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova", "xsltproc")]
         $processor = "xmlcalabash",
-        [string]$sbomPath = "$PSScriptRoot\sbom.xml",
-        $targetComposition,
+        [hashtable]$PackageResolution,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
         [Alias("parameters")]
@@ -147,13 +146,20 @@ function Transform-Xml {
     }
     if ($processing -eq "xproc") {
         $localRepository = Get-LocalRepositoryPath
-        #process bundle
+        # Unpack PackageResolution settings with defaults
+        $sbomPath = if ($PackageResolution -and $PackageResolution.sbomPath) { $PackageResolution.sbomPath } else { "$PSScriptRoot\sbom.xml" }
+        $targetComposition = if ($PackageResolution) { $PackageResolution.targetComposition } else { $null }
+        $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
+
         $compositionParams = @{
             sbomPath        = $sbomPath
             localRepository = $localRepository
         }
         if ($targetComposition) {
             $compositionParams.targetComposition = $targetComposition
+        }
+        if ($getLatest) {
+            $compositionParams.GetLatest = $true
         }
         [array]$paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
         if ($processor -eq "xmlcalabash") {

@@ -14,6 +14,11 @@ $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
   The specific composition to copy from the SBOM.
   .PARAMETER localRepository
   The local repository path where the dependencies will be copied.
+  .PARAMETER GetLatest
+  When specified, resolves the latest version for supported package types (codeberg, github)
+  by calling their release API. The resolved version replaces the SBOM-pinned version in the
+  purl before downloading. SBOM hash validation is skipped for rewritten components.
+  Unsupported types (sourceforge, maven) fall back to their pinned version with a warning.
   .OUTPUTS
   A list of objects containing the PURL and local path of each downloaded package.
 #>
@@ -23,7 +28,8 @@ function Copy-SoftwareComposition {
     [Parameter(Mandatory = $true)]
     [string] $sbomPath,
     [string] $targetComposition,
-    [string] $localRepository = (Get-LocalRepositoryPath)    
+    [string] $localRepository = (Get-LocalRepositoryPath),
+    [switch] $GetLatest
   )
 
   # Assumes cycloneDX XML 1.X
@@ -58,17 +64,44 @@ function Copy-SoftwareComposition {
       Write-Host "Warning: Component with bom-ref $cur not found in SBOM components list" -ForegroundColor Yellow
       continue
     }
-    # TODO better XPath
     # pull the distribution version preferentially over the pkg mgr version
     $distribution = $currentComposition.externalReferences.reference.url
     if ($distribution) {
       Write-Verbose "Distribution $distribution"
-      $purl = ConvertFrom-PkgUri($distribution)
+      $purlString = $distribution
     }
     else {
       Write-Verbose "Package $($currentComposition.purl)"
-      $purl = ConvertFrom-PkgUri($currentComposition.purl)
+      $purlString = [string]$currentComposition.purl
     }
+
+    # GetLatest: resolve and rewrite version for supported types
+    $skipHashes = $false
+    if ($GetLatest) {
+      $componentPurl = ConvertFrom-PkgUri([string]$currentComposition.purl)
+      if ($componentPurl.Type -in @('codeberg', 'github')) {
+        $apiPath = switch ($componentPurl.Type) {
+          "codeberg" { "https://codeberg.org/api/v1" }
+          default    { "https://api.github.com" }
+        }
+        $latestVersion = Resolve-LatestVersion -Type $componentPurl.Type `
+          -Namespace $componentPurl.Namespace `
+          -Name $componentPurl.Name `
+          -ApiPath $apiPath
+        if ($latestVersion -and $latestVersion -ne $componentPurl.Version) {
+          Write-Verbose "Rewriting $cur version $($componentPurl.Version) -> $latestVersion"
+          $purlString = Set-PurlVersion -PurlString $purlString `
+            -OldVersion $componentPurl.Version `
+            -NewVersion $latestVersion
+          $skipHashes = $true
+        }
+      }
+      else {
+        Write-Warning "GetLatest is not supported for package type '$($componentPurl.Type)'. Using pinned version for '$cur'."
+      }
+    }
+
+    $purl = ConvertFrom-PkgUri($purlString)
     # Download the package
     $downloadResult = Get-PackageFromPurl -purl $purl -localRepository $localRepository
 
@@ -82,7 +115,10 @@ function Copy-SoftwareComposition {
     if ($componentHashes) { $hashNodes += @($componentHashes) }
 
     $verifiableHashes = @()
-    if ($hashNodes.Count -eq 0) {
+    if ($skipHashes) {
+      Write-Verbose "Skipping SBOM hash validation for '$cur' (version was resolved to latest)."
+    }
+    elseif ($hashNodes.Count -eq 0) {
       Write-Warning "No hashes found for component '$cur' in SBOM."
     }
     else {
