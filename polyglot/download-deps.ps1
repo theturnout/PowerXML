@@ -5,6 +5,7 @@
 
 
 $hashAlgorithm = "SHA256"
+$Script:LatestVersionCache = @{}
 
 <#
 .SYNOPSIS
@@ -250,14 +251,45 @@ function Resolve-LatestVersion {
         return $null
     }
 
+    $cacheKey = "$Type/$Namespace/$Name"
+    $ttlHours = if ($env:POWERXML_CACHE_TTL_HOURS) { [double]$env:POWERXML_CACHE_TTL_HOURS } else { 3 }
+
+    if ($Script:LatestVersionCache.ContainsKey($cacheKey)) {
+        $entry = $Script:LatestVersionCache[$cacheKey]
+        $age = (Get-Date) - $entry.Timestamp
+        if ($age.TotalHours -lt $ttlHours) {
+            Write-Verbose "Cache hit for '$cacheKey' (age $([math]::Round($age.TotalMinutes, 1)) min)"
+            return $entry.Version
+        }
+        Write-Verbose "Cache expired for '$cacheKey'"
+    }
+
     $url = "$ApiPath/repos/$Namespace/$Name/releases/latest"
     try {
         $response = Invoke-RestMethod -Uri $url -UseBasicParsing
-        return $response.tag_name
+        $version = $response.tag_name
+        $Script:LatestVersionCache[$cacheKey] = @{
+            Version   = $version
+            Timestamp = Get-Date
+        }
+        return $version
     }
     catch {
         Write-Warning "Failed to resolve latest version for $Namespace/${Name}: $($_.Exception.Message)"
         return $null
     }
+}
+
+<#
+.SYNOPSIS
+    Clears the in-memory cache used by Resolve-LatestVersion.
+.DESCRIPTION
+    Resets the script-scoped latest-version cache. Useful in tests or when
+    forcing a fresh resolution.
+#>
+function Clear-LatestVersionCache {
+    [CmdletBinding()]
+    param()
+    $Script:LatestVersionCache = @{}
 }
 

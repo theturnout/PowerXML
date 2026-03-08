@@ -216,6 +216,10 @@ Describe 'Set-PurlVersion' {
 }
 
 Describe 'Resolve-LatestVersion' {
+    BeforeEach {
+        Clear-LatestVersionCache
+    }
+
     It 'Should call correct API URL for github type' {
         Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
             return [PSCustomObject]@{ tag_name = 'v2.0.0' }
@@ -255,6 +259,112 @@ Describe 'Resolve-LatestVersion' {
             -WarningVariable warnings -WarningAction SilentlyContinue
         $result | Should -BeNullOrEmpty
         $warnings | Should -BeLike "*Failed to resolve*"
+    }
+}
+
+Describe 'Resolve-LatestVersion caching' {
+    BeforeEach {
+        Clear-LatestVersionCache
+        $env:POWERXML_CACHE_TTL_HOURS = $null
+    }
+
+    AfterAll {
+        Clear-LatestVersionCache
+        $env:POWERXML_CACHE_TTL_HOURS = $null
+    }
+
+    It 'Should call API on first invocation (cache miss)' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ tag_name = 'v1.0.0' }
+        }
+
+        $result = Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo'
+        $result | Should -Be 'v1.0.0'
+        Should -Invoke Invoke-RestMethod -Times 1 -ModuleName polyglot
+    }
+
+    It 'Should return cached value without calling API on second invocation' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ tag_name = 'v1.0.0' }
+        }
+
+        Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo' | Out-Null
+        $result = Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo'
+        $result | Should -Be 'v1.0.0'
+        Should -Invoke Invoke-RestMethod -Times 1 -ModuleName polyglot
+    }
+
+    It 'Should re-fetch when cache entry has expired' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ tag_name = 'v2.0.0' }
+        }
+
+        # Seed the cache with an expired entry (4 hours old)
+        $cacheKey = 'github/owner/repo'
+        $stale = (Get-Date).AddHours(-4)
+        & (Get-Module polyglot) {
+            $Script:LatestVersionCache['github/owner/repo'] = @{
+                Version   = 'v1.0.0'
+                Timestamp = $args[0]
+            }
+        } $stale
+
+        $result = Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo'
+        $result | Should -Be 'v2.0.0'
+        Should -Invoke Invoke-RestMethod -Times 1 -ModuleName polyglot
+    }
+
+    It 'Should respect POWERXML_CACHE_TTL_HOURS environment variable' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ tag_name = 'v3.0.0' }
+        }
+
+        # Set a very short TTL so the seeded entry is expired
+        $env:POWERXML_CACHE_TTL_HOURS = '0.001'  # ~3.6 seconds
+
+        # Seed cache with an entry from 1 minute ago (well past 3.6s)
+        $stale = (Get-Date).AddMinutes(-1)
+        & (Get-Module polyglot) {
+            $Script:LatestVersionCache['github/owner/repo'] = @{
+                Version   = 'v2.0.0'
+                Timestamp = $args[0]
+            }
+        } $stale
+
+        $result = Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo'
+        $result | Should -Be 'v3.0.0'
+        Should -Invoke Invoke-RestMethod -Times 1 -ModuleName polyglot
+    }
+
+    It 'Should clear cache with Clear-LatestVersionCache' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ tag_name = 'v1.0.0' }
+        }
+
+        Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo' | Out-Null
+        Clear-LatestVersionCache
+        Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repo' | Out-Null
+
+        # API should have been called twice since cache was cleared in between
+        Should -Invoke Invoke-RestMethod -Times 2 -ModuleName polyglot
+    }
+
+    It 'Should cache different packages independently' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            if ($Uri -like '*repoA*') { return [PSCustomObject]@{ tag_name = 'a1.0' } }
+            return [PSCustomObject]@{ tag_name = 'b2.0' }
+        }
+
+        $a = Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repoA'
+        $b = Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repoB'
+        $a | Should -Be 'a1.0'
+        $b | Should -Be 'b2.0'
+        Should -Invoke Invoke-RestMethod -Times 2 -ModuleName polyglot
+
+        # Second call for each should be cached
+        Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repoA' | Out-Null
+        Resolve-LatestVersion -Type 'github' -Namespace 'owner' -Name 'repoB' | Out-Null
+        Should -Invoke Invoke-RestMethod -Times 2 -ModuleName polyglot
     }
 }
 
