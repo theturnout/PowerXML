@@ -58,7 +58,6 @@ function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(
         [array]$paths,        
-        [bool]$PipeInput,
         $InputObject,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
@@ -121,13 +120,17 @@ function Invoke-XmlCalabash {
         }
         $xcArgs += $xcOutput
     }
+    # else {
+    #     $mimeOut = New-TemporaryFile
+    #     $xcArgs += ("--output-multiplex:$($mimeOut.FullName)")
+    # }
 
     if ($catalog) {
         $xcArgs += @("--catalog:`"$catalog`"")
     }
 
     #handle STDIN
-    if ($PipeInput) {
+    if ($InputObject) {
         $xcArgs += @("--pipe")
     }
 
@@ -189,7 +192,7 @@ function Invoke-XmlCalabash {
     [console]::InputEncoding = [console]::OutputEncoding = New-Object System.Text.UTF8Encoding
 
     $stdinString = $null
-    if ($PipeInput -and $null -ne $InputObject) {
+    if ($null -ne $InputObject) {
         $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
     }
 
@@ -202,11 +205,13 @@ function Invoke-XmlCalabash {
         }
     }
     else {
+        # this will break if someone is missing an inport and the processor 
+        # tried to bind it to stdin
         if ($MergeOutput) {
-            $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            $output = $null | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
         }
         else {
-            $output = & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+            $output = $null | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
     if ($output -is [array]) {
@@ -221,8 +226,7 @@ function Invoke-XmlCalabash {
 function Invoke-MorganaXProc {
     [CmdletBinding()]
     param(
-        [array]$paths,        
-        [bool]$PipeInput,
+        [array]$paths,                
         $InputObject,
         [Parameter(Mandatory = $true)] 
         $pipeline,        
@@ -233,7 +237,8 @@ function Invoke-MorganaXProc {
         [array]$passthrough,
         [array]$passthroughJava,
         [bool]$MergeOutput = $true,
-        [hashtable]$Namespace
+        [hashtable]$Namespace,
+        [string]$Configuration
     )
     #$processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8.2")
         
@@ -248,7 +253,7 @@ function Invoke-MorganaXProc {
     $cp = "$processorPath/MorganaXProc-IIIse.jar"
 
     $cp += Get-PXClassPath -paths $paths
-
+    
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
     Get-ChildItem "$processorPath\MorganaXProc-IIIse_lib" -Filter *.jar |
         ForEach-Object {
@@ -257,6 +262,9 @@ function Invoke-MorganaXProc {
         
     # Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
+    if ($Configuration) {
+        $xcArgs += @("-config=`"$Configuration`"")
+    }
     $xcArgs += @($pipeline)
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
     if ($inPort) {
@@ -284,7 +292,7 @@ function Invoke-MorganaXProc {
     }
 
     if ($catalog) {
-        $xcArgs += @("--catalog:`"$catalog`"")
+        $xcArgs += @("-catalogs=`"$catalog`"")
     }
 
 
@@ -319,15 +327,16 @@ function Invoke-MorganaXProc {
     #TODO parameterize
     $xcArgs += @("-silent")
 
+
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
-    Write-Debug "args to processor is $xcArgs"
+    Write-Host "args to processor is $xcArgs"
 
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 
     # Morgana does not support --pipe; write pipeline input to a temp file and pass via -input:source
-    if ($PipeInput -and $null -ne $InputObject) {
+    if ($null -ne $InputObject) {
         $stdinContent = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
         $stdinTempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xml")
         [System.IO.File]::WriteAllText($stdinTempFile, $stdinContent, [System.Text.UTF8Encoding]::new())

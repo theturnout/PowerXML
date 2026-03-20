@@ -229,7 +229,7 @@
 		<composition bom-ref="pester-tests">
 			<aggregate>complete</aggregate>
 			<dependencies>				
-				<dependency ref="xmlcalabash-3.0.24"/>
+				<dependency ref="xmlcalabash-3.0.40"/>
 				<dependency ref="morganaxproc-1.8.2"/>
 			</dependencies>
 		</composition>

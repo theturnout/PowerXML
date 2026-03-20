@@ -178,6 +178,24 @@ Describe 'Transform-Xml' {
     # }
 }
 
+Describe 'XmlCalabash Specific Tests' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    It 'Should handle XML Calabash specific options' {
+        [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
+        [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"            
+        $result = Transform-Xml -PackageResolution @{targetComposition = "pester-tests" } `
+            -Processor "xmlcalabash" `
+            -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" `
+            -InPort @{ source = @($xmlInput1, $xmlInput2) } 
+        # result is XmlDocument
+        $result[0] | Should -BeOfType [xml]
+        $result[1] | Should -BeOfType [xml]         
+    }
+}
+
 Describe 'Transform-Xml parameter handling' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
