@@ -489,6 +489,147 @@ Describe 'Transform-Xml XSLT Processing' {
         }
     }
 
+    Context "PhoenixmlDb.Xslt processor (XSLT 3.0/4.0)" {
+        BeforeAll {
+            if ($PSVersionTable.PSEdition -ne 'Core') { return }
+
+            # Compile a mock PhoenixmlDb.Xslt assembly into a NuGet package directory
+            # structure so the assembly-loading code in Invoke-PhoenixmlXslt is
+            # exercised end-to-end (TFM resolution, Add-Type -Path, type check).
+            # Placed outside TestDrive because the loaded DLL is locked by the
+            # runtime and Pester's cleanup would fail trying to delete it.
+            $script:MockPkgDir = Join-Path ([System.IO.Path]::GetTempPath()) 'pxml-mock-phoenixml'
+            $mockLibDir = Join-Path $script:MockPkgDir 'lib' 'net9.0'
+            New-Item -ItemType Directory -Path $mockLibDir -Force | Out-Null
+
+            $mockDllPath = Join-Path $mockLibDir 'PhoenixmlDb.Xslt.dll'
+            if (-not (Test-Path $mockDllPath)) {
+                $mockCode = @"
+namespace PhoenixmlDb.Xslt {
+    using System;
+    using System.Collections.Generic;
+    using System.Threading.Tasks;
+    public class XsltTransformer {
+        public Task LoadStylesheetAsync(string stylesheet, Uri baseUri) {
+            return Task.CompletedTask;
+        }
+        public void SetParameter(string name, string value) { }
+        public void SetInitialTemplate(string name, string ns) { }
+        public void SetSourceDocumentUri(Uri uri) { }
+        public Task<string> TransformAsync(string input) {
+            return Task.FromResult(input ?? "<result/>");
+        }
+        public Dictionary<string, string> SecondaryResultDocuments { get; } = new();
+    }
+}
+"@
+                Add-Type -TypeDefinition $mockCode -OutputAssembly $mockDllPath
+            }
+        }
+        
+        It "phoenixml - Should load assemblies from NuGet package and run transform" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_input.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><message>Hello, Phoenixml!</message></root>"
+            $xmlInput.Save($inputFile)
+            
+            $result = Transform-Xml `
+                -Processing "xslt" `
+                -Processor "phoenixml" `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort @{ source = $inputFile }
+            
+            # Mock transformer returns input content as-is
+            $result | Should -BeLike "*<root>*"
+            $result | Should -BeLike "*<message>Hello, Phoenixml!</message>*"
+        }
+        
+        It "phoenixml - Should output to file" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_input2.xml"
+            $outputFile = "$TestDrive/phoenixml_output.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><data>Phoenixml File Test</data></root>"
+            $xmlInput.Save($inputFile)
+            
+            Transform-Xml `
+                -Processing "xslt" `
+                -Processor "phoenixml" `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort @{ source = $inputFile } `
+                -OutPort @{ result = $outputFile }
+            
+            Test-Path $outputFile | Should -Be $true
+            $content = Get-Content $outputFile -Raw
+            $content | Should -BeLike "*<data>Phoenixml File Test</data>*"
+        }
+        
+        It "phoenixml - Should accept and pass parameters without error" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_input3.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root/>"
+            $xmlInput.Save($inputFile)
+            
+            # Mock transformer doesn't evaluate the stylesheet, so output won't
+            # reflect parameter substitution. Verify the full code path
+            # (SetParameter calls, TransformAsync) completes without error.
+            { Transform-Xml `
+                    -Processing "xslt" `
+                    -Processor "phoenixml" `
+                    -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
+                    -InPort @{ source = $inputFile } `
+                    -Options @{ greeting = "Greetings"; name = "PhoenixmlUser" } } | Should -Not -Throw
+        }
+        
+        It "phoenixml - Should throw when no assemblies resolve the type" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            # Once the mock DLL has been loaded by a prior test the type persists
+            # in the session, so this error path can only be verified on first run.
+            $typeLoaded = $false
+            try { $null = [PhoenixmlDb.Xslt.XsltTransformer]; $typeLoaded = $true } catch {}
+            if ($typeLoaded) {
+                Set-ItResult -Skipped -Because "Type already loaded from earlier test in this session"
+                return
+            }
+            
+            # Point to an empty directory with no lib/ sub-tree
+            $emptyDir = Join-Path $TestDrive 'empty-pkg'
+            New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($emptyDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_err.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root/>"
+            $xmlInput.Save($inputFile)
+            
+            { Transform-Xml `
+                    -Processing "xslt" `
+                    -Processor "phoenixml" `
+                    -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                    -InPort @{ source = $inputFile } } | Should -Throw "*PhoenixmlDb.Xslt assembly is not loaded*"
+        }
+    }
+
     Context "Error handling" {
         # It "Should throw error for unsupported processor" {
         #     $inputFile = "$TestDrive/xslt_err_input.xml"

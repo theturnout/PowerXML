@@ -240,13 +240,14 @@ function Resolve-LatestVersion {
         [Parameter(Mandatory = $true)]
         [string]$Type,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Namespace,
         [Parameter(Mandatory = $true)]
         [string]$Name,
         [string]$ApiPath = "https://api.github.com"
     )
 
-    if ($Type -notin @("github", "codeberg")) {
+    if ($Type -notin @("github", "codeberg", "nuget")) {
         Write-Warning "GetLatest is not supported for package type '$Type'. Using pinned version."
         return $null
     }
@@ -264,10 +265,21 @@ function Resolve-LatestVersion {
         Write-Verbose "Cache expired for '$cacheKey'"
     }
 
-    $url = "$ApiPath/repos/$Namespace/$Name/releases/latest"
+    if ($Type -eq "nuget") {
+        $idLower = $Name.ToLowerInvariant()
+        $url = "https://api.nuget.org/v3-flatcontainer/$idLower/index.json"
+    }
+    else {
+        $url = "$ApiPath/repos/$Namespace/$Name/releases/latest"
+    }
     try {
         $response = Invoke-RestMethod -Uri $url -UseBasicParsing
-        $version = $response.tag_name
+        if ($Type -eq "nuget") {
+            $version = $response.versions | Select-Object -Last 1
+        }
+        else {
+            $version = $response.tag_name
+        }
         $Script:LatestVersionCache[$cacheKey] = @{
             Version   = $version
             Timestamp = Get-Date

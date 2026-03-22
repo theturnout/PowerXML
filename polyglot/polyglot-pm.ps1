@@ -5,41 +5,182 @@
 . "$PSScriptRoot\pom.ps1"
 
 $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
+
+<#
+.SYNOPSIS
+  Merges additional package URLs into an in-memory CycloneDX SBOM.
+.DESCRIPTION
+  For each purl in AdditionalPackages, matches existing components by
+  type/namespace/name. When a match is found the version is rewritten
+  (in both the component purl and its distribution URL) and hashes are
+  removed. Unmatched purls are added as new components and appended to
+  the specified composition.
+.PARAMETER Sbom
+  The in-memory SBOM XmlDocument to modify.
+.PARAMETER AdditionalPackages
+  One or more Package URL strings to merge.
+.PARAMETER CompositionRef
+  The bom-ref of the composition that new (non-matching) components
+  should be added to.
+#>
+function Merge-AdditionalPackages {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [xml]$Sbom,
+    [Parameter(Mandatory = $true)]
+    [string[]]$AdditionalPackages,
+    [string]$CompositionRef
+  )
+
+  $ns = $Sbom.DocumentElement.NamespaceURI
+
+  foreach ($purlString in $AdditionalPackages) {
+    $addPurl = ConvertFrom-PkgUri $purlString
+
+    # Find existing component with matching type/namespace/name
+    $matchingComponent = $null
+    $existingPurl = $null
+    foreach ($comp in @($Sbom.bom.components.component)) {
+      if (-not $comp.purl) { continue }
+      $compPurl = ConvertFrom-PkgUri ([string]$comp.purl)
+      if ($compPurl.Type -eq $addPurl.Type -and
+          $compPurl.Namespace -eq $addPurl.Namespace -and
+          $compPurl.Name -eq $addPurl.Name) {
+        $matchingComponent = $comp
+        $existingPurl = $compPurl
+        break
+      }
+    }
+
+    if ($matchingComponent) {
+      if ($existingPurl.Version -ne $addPurl.Version) {
+        Write-Verbose "AdditionalPackages: rewriting '$($matchingComponent."bom-ref")' version $($existingPurl.Version) -> $($addPurl.Version)"
+
+        # Rewrite component purl
+        $matchingComponent.purl = Set-PurlVersion -PurlString ([string]$matchingComponent.purl) `
+          -OldVersion $existingPurl.Version -NewVersion $addPurl.Version
+
+        # Rewrite distribution URL if present
+        $refNode = $matchingComponent.SelectSingleNode(
+          "*[local-name()='externalReferences']/*[local-name()='reference']")
+        if ($refNode) {
+          $urlNode = $refNode.SelectSingleNode("*[local-name()='url']")
+          if ($urlNode) {
+            $urlNode.InnerText = Set-PurlVersion -PurlString $urlNode.InnerText `
+              -OldVersion $existingPurl.Version -NewVersion $addPurl.Version
+          }
+          # Remove distribution reference hashes
+          $refHashes = $refNode.SelectSingleNode("*[local-name()='hashes']")
+          if ($refHashes) { $refNode.RemoveChild($refHashes) | Out-Null }
+        }
+
+        # Remove component-level hashes
+        $componentHashes = $matchingComponent.SelectSingleNode("*[local-name()='hashes']")
+        if ($componentHashes) { $matchingComponent.RemoveChild($componentHashes) | Out-Null }
+      }
+    }
+    else {
+      # Add new component
+      $bomRef = "$($addPurl.Name)-additional"
+      $component = $Sbom.CreateElement("component", $ns)
+      $component.SetAttribute("type", "library")
+      $component.SetAttribute("bom-ref", $bomRef)
+
+      $nameEl = $Sbom.CreateElement("name", $ns)
+      $nameEl.InnerText = $addPurl.Name
+      $component.AppendChild($nameEl) | Out-Null
+
+      $purlEl = $Sbom.CreateElement("purl", $ns)
+      $purlEl.InnerText = $purlString
+      $component.AppendChild($purlEl) | Out-Null
+
+      $componentsNode = $Sbom.DocumentElement.SelectSingleNode("*[local-name()='components']")
+      $componentsNode.AppendChild($component) | Out-Null
+
+      # Add to composition
+      if ($CompositionRef) {
+        $compNode = $Sbom.bom.compositions.composition |
+          Where-Object { $_."bom-ref" -eq $CompositionRef }
+        if ($compNode) {
+          $dep = $Sbom.CreateElement("dependency", $ns)
+          $dep.SetAttribute("ref", $bomRef)
+          $depsContainer = $compNode.SelectSingleNode("*[local-name()='dependencies']")
+          if (-not $depsContainer) {
+            $depsContainer = $Sbom.CreateElement("dependencies", $ns)
+            $compNode.AppendChild($depsContainer) | Out-Null
+          }
+          $depsContainer.AppendChild($dep) | Out-Null
+        }
+      }
+    }
+  }
+}
+
 <#
 .SYNOPSIS
   Copies software composition from a CycloneDX SBOM XML file to a local repository.
-  .PARAMETER sbomPath
-  Path to the CycloneDX SBOM XML file.
-  .PARAMETER targetComposition
+.PARAMETER sbomPath
+  Path to the CycloneDX SBOM XML file. When omitted (and AdditionalPackages is
+  supplied) an interstitial SBOM is created in memory.
+.PARAMETER targetComposition
   The specific composition to copy from the SBOM.
-  .PARAMETER localRepository
+.PARAMETER localRepository
   The local repository path where the dependencies will be copied.
-  .PARAMETER GetLatest
+.PARAMETER GetLatest
   When specified, resolves the latest version for supported package types (codeberg, github)
   by calling their release API. The resolved version replaces the SBOM-pinned version in the
   purl before downloading. SBOM hash validation is skipped for rewritten components.
   Unsupported types (sourceforge, maven) fall back to their pinned version with a warning.
-  .OUTPUTS
+.PARAMETER AdditionalPackages
+  One or more Package URL strings to merge into the SBOM. Matching components
+  (same type/namespace/name) have their version replaced and hashes removed.
+  Non-matching purls are added as new components.
+.OUTPUTS
   A list of objects containing the PURL and local path of each downloaded package.
 #>
 function Copy-SoftwareComposition {
   [CmdletBinding()]
   param(
-    [Parameter(Mandatory = $true)]
     [string] $sbomPath,
     [string] $targetComposition,
     [string] $localRepository = (Get-LocalRepositoryPath),
-    [switch] $GetLatest
+    [switch] $GetLatest,
+    [string[]] $AdditionalPackages,
+    [switch] $ValidateSbom
   )
 
-  # Assumes cycloneDX XML 1.X
-  $file = Resolve-Path $sbomPath
-  [xml]$xmlContent = Get-Content -Path $file
-  if (-not (Test-SBOM $xmlContent)) {
-    Write-Host "Fatal: Invalid SBOM file $sbomPath" -ForegroundColor Red
-    exit 1
+  # Load existing SBOM or create an interstitial one from AdditionalPackages
+  if ($sbomPath -and (Test-Path $sbomPath)) {
+    $file = Resolve-Path $sbomPath
+    [xml]$xmlContent = Get-Content -Path $file
+    if (-not (Test-SBOM $xmlContent -ValidateSchema:$ValidateSbom)) {
+      Write-Host "Fatal: Invalid SBOM file $sbomPath" -ForegroundColor Red
+      exit 1
+    }
   }
-  $bom = $xmlContent.bom;
+  elseif ($AdditionalPackages) {
+    Write-Verbose "No SBOM file found; creating interstitial SBOM from AdditionalPackages."
+    [xml]$xmlContent = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+  <components/>
+  <compositions>
+    <composition bom-ref="additional">
+      <aggregate>complete</aggregate>
+      <dependencies/>
+    </composition>
+  </compositions>
+</bom>
+'@
+  }
+  else {
+    # Preserve existing error behaviour: Resolve-Path throws on missing file
+    Resolve-Path $sbomPath -ErrorAction Stop
+    return
+  }
+
+  $bom = $xmlContent.bom
 
   if (-not $targetComposition) {
     # Pick the first composition in the SBOM
@@ -55,6 +196,13 @@ function Copy-SoftwareComposition {
     if (!$composition) {
       throw "Target composition '$targetComposition' not found in SBOM '$sbomPath'."
     }
+  }
+
+  # Merge AdditionalPackages into the interstitial SBOM
+  if ($AdditionalPackages) {
+    Merge-AdditionalPackages -Sbom $xmlContent `
+      -AdditionalPackages $AdditionalPackages `
+      -CompositionRef $composition."bom-ref"
   }
   
   $composition.dependencies.dependency | ForEach-Object {
@@ -79,7 +227,7 @@ function Copy-SoftwareComposition {
     $skipHashes = $false
     if ($GetLatest) {
       $componentPurl = ConvertFrom-PkgUri([string]$currentComposition.purl)
-      if ($componentPurl.Type -in @('codeberg', 'github')) {
+      if ($componentPurl.Type -in @('codeberg', 'github', 'nuget')) {
         $apiPath = switch ($componentPurl.Type) {
           "codeberg" { "https://codeberg.org/api/v1" }
           default    { "https://api.github.com" }
@@ -248,6 +396,32 @@ function Get-PackageFromPurl {
       -LibPath $localRepository `
       -ApiPath "https://codeberg.org/api/v1" `
       -Assets @($fileName)
+  }
+  elseif ($purl.Type -eq "nuget") {
+    $name = $purl.Name
+    $version = $purl.Version
+    $idLower = $name.ToLowerInvariant()
+    $nupkgFile = "$idLower.$version.nupkg"
+    $downloadUrl = "https://api.nuget.org/v3-flatcontainer/$idLower/$version/$nupkgFile"
+    $nupkgPath = Join-Path $localRepository "$name-$version.nupkg"
+    $installedPath = Join-Path $localRepository "$name-$version"
+
+    # Already installed (by a previous Install-Package call)
+    if (Test-Path $installedPath -PathType Container) {
+      Write-Verbose "$name $version already installed."
+      $paths = @($installedPath)
+    }
+    else {
+      # Download the nupkg if not already present
+      if (-not (Test-Path $nupkgPath)) {
+        Write-Host "Downloading $name $version from NuGet..."
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $nupkgPath -UseBasicParsing
+      }
+      else {
+        Write-Verbose "$name $version already downloaded."
+      }
+      $paths = @($nupkgPath)
+    }
   }
   else {
     Write-Host "$($purl.Type) not supported yet" -ForegroundColor Yellow				

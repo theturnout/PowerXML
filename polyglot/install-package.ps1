@@ -53,9 +53,9 @@ function Install-Package {
         $null = Test-FileHash -Path $DownloadedPath -ExpectedHash $h.Hash -Algorithm $h.Algorithm
     }
 
-    # Extract if zip
+    # Extract if zip (nupkg files are also ZIP archives)
     $extension = [System.IO.Path]::GetExtension($DownloadedPath)
-    if ($extension -eq ".zip") {
+    if ($extension -in @(".zip", ".nupkg")) {
         Expand-Archive -Path $DownloadedPath -DestinationPath $LocalRepository -Force
 
         # Handle rootZip rename: the directory inside the zip may not match the canonical name

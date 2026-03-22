@@ -136,7 +136,7 @@ Describe 'Copy-SoftwareComposition composition selection' {
 
         $result = Copy-SoftwareComposition `
             -sbomPath $script:twoCompSbom `
-            -localRepository $env:polyglotpm -Verbose 4>&1
+            -localRepository $env:polyglotpm -ValidateSbom -Verbose 4>&1
 
         # Verbose stream should mention the first composition's bom-ref
         $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
@@ -151,7 +151,7 @@ Describe 'Copy-SoftwareComposition composition selection' {
         $result = Copy-SoftwareComposition `
             -sbomPath $script:twoCompSbom `
             -targetComposition 'second' `
-            -localRepository $env:polyglotpm -Verbose 4>&1
+            -localRepository $env:polyglotpm -ValidateSbom -Verbose 4>&1
 
         # Should NOT emit the auto-select verbose message
         $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
@@ -162,14 +162,14 @@ Describe 'Copy-SoftwareComposition composition selection' {
     It 'Should throw when targetComposition is not specified and SBOM has no compositions' {
         { Copy-SoftwareComposition `
                 -sbomPath $script:noCompSbom `
-                -localRepository $env:polyglotpm } | Should -Throw '*No compositions found*'
+                -localRepository $env:polyglotpm -ValidateSbom } | Should -Throw '*No compositions found*'
     }
 
     It 'Should throw when explicit targetComposition is not found' {
         { Copy-SoftwareComposition `
                 -sbomPath $script:twoCompSbom `
                 -targetComposition 'nonexistent' `
-                -localRepository $env:polyglotpm } | Should -Throw '*not found*'
+                -localRepository $env:polyglotpm -ValidateSbom } | Should -Throw '*not found*'
     }
 }
 
@@ -383,7 +383,7 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
                 <reference type="distribution">
                     <url>pkg:github/xmlcalabash/xmlcalabash3@3.0.0-beta7?filename=xmlcalabash-3.0.0-beta7.zip</url>
                     <hashes>
-                        <hash alg="SHA-256">oldhash000</hash>
+                        <hash alg="SHA-256">0000000000000000000000000000000000000000000000000000000000000000</hash>
                     </hashes>
                 </reference>
             </externalReferences>
@@ -430,7 +430,7 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
             -sbomPath $script:getLatestSbom `
             -targetComposition 'test-latest' `
             -localRepository $env:polyglotpm `
-            -GetLatest
+            -GetLatest -ValidateSbom
 
         # The github component should have the resolved version
         $ghPurl = $script:capturedPurls | Where-Object { $_.Type -eq 'github' }
@@ -453,7 +453,7 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
             -sbomPath $script:getLatestSbom `
             -targetComposition 'test-latest' `
             -localRepository $env:polyglotpm `
-            -GetLatest
+            -GetLatest -ValidateSbom
 
         # The sourceforge component should keep its pinned version
         $sfPurl = $script:capturedPurls | Where-Object { $_.Type -eq 'sourceforge' }
@@ -474,7 +474,7 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
             -sbomPath $script:getLatestSbom `
             -targetComposition 'test-latest' `
             -localRepository $env:polyglotpm `
-            -GetLatest -Verbose 4>&1
+            -GetLatest -ValidateSbom -Verbose 4>&1
 
         $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
         ($verboseMessages | Out-String) | Should -BeLike '*Skipping SBOM hash validation*gh-comp*'
@@ -496,11 +496,370 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
             -sbomPath $script:getLatestSbom `
             -targetComposition 'test-latest' `
             -localRepository $env:polyglotpm `
-            -GetLatest
+            -GetLatest -ValidateSbom
 
         # Version should remain unchanged
         $ghPurl = $script:capturedPurls | Where-Object { $_.Type -eq 'github' }
         $ghPurl.Version | Should -Be '3.0.0-beta7'
+    }
+}
+
+Describe 'Merge-AdditionalPackages' {
+    BeforeAll {
+        # Build a reusable SBOM template for each test
+        $script:mergeTemplate = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="gh-comp">
+            <name>xmlcalabash</name>
+            <hashes>
+                <hash alg="SHA-256">def456</hash>
+            </hashes>
+            <purl>pkg:github/xmlcalabash/xmlcalabash3@3.0.40</purl>
+            <externalReferences>
+                <reference type="distribution">
+                    <url>pkg:github/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip</url>
+                    <hashes>
+                        <hash alg="SHA-256">abc123</hash>
+                    </hashes>
+                </reference>
+            </externalReferences>
+        </component>
+    </components>
+    <compositions>
+        <composition bom-ref="test-merge">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="gh-comp"/>
+            </dependencies>
+        </composition>
+    </compositions>
+</bom>
+'@
+    }
+
+    It 'Should rewrite version for matching component' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages @('pkg:github/xmlcalabash/xmlcalabash3@3.0.39') `
+            -CompositionRef 'test-merge'
+
+        $comp = $sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'gh-comp' }
+        $comp.purl | Should -BeLike '*@3.0.39*'
+    }
+
+    It 'Should rewrite distribution URL version' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages @('pkg:github/xmlcalabash/xmlcalabash3@3.0.39') `
+            -CompositionRef 'test-merge'
+
+        $comp = $sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'gh-comp' }
+        $distUrl = $comp.externalReferences.reference.url
+        $distUrl | Should -BeLike '*@3.0.39*'
+        $distUrl | Should -BeLike '*xmlcalabash-3.0.39.zip*'
+    }
+
+    It 'Should remove component-level and distribution hashes' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages @('pkg:github/xmlcalabash/xmlcalabash3@3.0.39') `
+            -CompositionRef 'test-merge'
+
+        $comp = $sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'gh-comp' }
+        # Component-level hashes should be gone
+        $comp.SelectSingleNode("*[local-name()='hashes']") | Should -BeNullOrEmpty
+        # Distribution reference hashes should be gone
+        $refNode = $comp.SelectSingleNode(
+            "*[local-name()='externalReferences']/*[local-name()='reference']")
+        $refNode.SelectSingleNode("*[local-name()='hashes']") | Should -BeNullOrEmpty
+    }
+
+    It 'Should add new component when no match exists' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages @('pkg:github/owner/newpkg@1.0.0') `
+            -CompositionRef 'test-merge'
+
+        $newComp = $sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'newpkg-additional' }
+        $newComp | Should -Not -BeNullOrEmpty
+        $newComp.purl | Should -Be 'pkg:github/owner/newpkg@1.0.0'
+
+        # Should also be added to the composition
+        $deps = $sbom.bom.compositions.composition.dependencies.dependency
+        ($deps | Where-Object { $_.ref -eq 'newpkg-additional' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Should be a no-op when version already matches' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages @('pkg:github/xmlcalabash/xmlcalabash3@3.0.40') `
+            -CompositionRef 'test-merge'
+
+        $comp = $sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'gh-comp' }
+        $comp.purl | Should -BeLike '*@3.0.40*'
+        # Hashes should still be present (no rewrite occurred)
+        $comp.SelectSingleNode("*[local-name()='hashes']") | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Should accept a single purl string' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages 'pkg:github/xmlcalabash/xmlcalabash3@3.0.39' `
+            -CompositionRef 'test-merge'
+
+        $comp = $sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'gh-comp' }
+        $comp.purl | Should -BeLike '*@3.0.39*'
+    }
+}
+
+Describe 'Copy-SoftwareComposition -AdditionalPackages' {
+    It 'Should merge version override into existing SBOM' {
+        $script:capturedPurls = @()
+        Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
+            $script:capturedPurls += $purl
+            return @("$localRepository\fake")
+        }
+        Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
+
+        # Reuse the -GetLatest SBOM fixture (has gh-comp at 3.0.0-beta7)
+        $sbomXml = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="gh-comp">
+            <name>xmlcalabash</name>
+            <purl>pkg:github/xmlcalabash/xmlcalabash3@3.0.0-beta7</purl>
+        </component>
+    </components>
+    <compositions>
+        <composition bom-ref="test">
+            <aggregate>complete</aggregate>
+            <dependencies><dependency ref="gh-comp"/></dependencies>
+        </composition>
+    </compositions>
+</bom>
+'@
+        $sbomFile = Join-Path $TestDrive 'addpkg-sbom.xml'
+        Set-Content -Path $sbomFile -Value $sbomXml -Encoding UTF8
+
+        Copy-SoftwareComposition `
+            -sbomPath $sbomFile `
+            -targetComposition 'test' `
+            -localRepository $env:polyglotpm `
+            -AdditionalPackages @('pkg:github/xmlcalabash/xmlcalabash3@3.0.0-beta6') `
+            -ValidateSbom
+
+        $ghPurl = $script:capturedPurls | Where-Object { $_.Type -eq 'github' }
+        $ghPurl.Version | Should -Be '3.0.0-beta6'
+    }
+
+    It 'Should create interstitial SBOM when no sbomPath exists' {
+        $script:capturedPurls = @()
+        Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
+            $script:capturedPurls += $purl
+            return @("$localRepository\fake")
+        }
+        Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
+
+        Copy-SoftwareComposition `
+            -sbomPath (Join-Path $TestDrive 'nonexistent-sbom.xml') `
+            -localRepository $env:polyglotpm `
+            -AdditionalPackages @('pkg:github/owner/newpkg@2.0.0') `
+            -ValidateSbom
+
+        $script:capturedPurls.Count | Should -Be 1
+        $script:capturedPurls[0].Name | Should -Be 'newpkg'
+        $script:capturedPurls[0].Version | Should -Be '2.0.0'
+    }
+
+    It 'Should still throw when no sbomPath and no AdditionalPackages' {
+        { Copy-SoftwareComposition `
+            -sbomPath 'nonexistent-sbom.xml' `
+            -localRepository $env:polyglotpm -ValidateSbom } | Should -Throw
+    }
+}
+
+Describe 'Test-SBOM -ValidateSchema' {
+    It 'Should pass for a valid CycloneDX 1.5 SBOM' {
+        [xml]$validSbom = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="comp-a">
+            <name>comp-a</name>
+            <purl>pkg:maven/org.example/a@1.0</purl>
+        </component>
+    </components>
+    <compositions>
+        <composition bom-ref="test">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="comp-a"/>
+            </dependencies>
+        </composition>
+    </compositions>
+</bom>
+'@
+        Test-SBOM $validSbom -ValidateSchema | Should -Be $true
+    }
+
+    It 'Should throw for an SBOM with invalid component (missing type attribute)' {
+        [xml]$invalidSbom = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component bom-ref="bad">
+            <name>bad-component</name>
+        </component>
+    </components>
+</bom>
+'@
+        { Test-SBOM $invalidSbom -ValidateSchema } | Should -Throw '*schema validation failed*'
+    }
+
+    It 'Should pass without schema validation even when SBOM is schema-invalid' {
+        [xml]$invalidSbom = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component bom-ref="bad">
+            <name>bad-component</name>
+        </component>
+    </components>
+</bom>
+'@
+        # Without -ValidateSchema, only the namespace check runs
+        Test-SBOM $invalidSbom | Should -Be $true
+    }
+}
+
+Describe 'NuGet PURL support' {
+    It 'Should parse a NuGet PURL without namespace' {
+        $purlString = "pkg:nuget/PhoenixmlDb.Xslt@1.0.0"
+        $purl = ConvertFrom-PkgUri -uriString $purlString
+
+        $purl.Type | Should -Be "nuget"
+        $purl.Name | Should -Be "PhoenixmlDb.Xslt"
+        $purl.Version | Should -Be "1.0.0"
+    }
+
+    It 'Should parse a NuGet PURL with qualifiers' {
+        $purlString = "pkg:nuget/Newtonsoft.Json@13.0.3?repository_url=https://github.com/JamesNK/Newtonsoft.Json"
+        $purl = ConvertFrom-PkgUri -uriString $purlString
+
+        $purl.Type | Should -Be "nuget"
+        $purl.Name | Should -Be "Newtonsoft.Json"
+        $purl.Version | Should -Be "13.0.3"
+    }
+}
+
+Describe 'Get-PackageFromPurl NuGet handler' {
+    It 'Should download nupkg from NuGet API' {
+        Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
+
+        $purl = [PSCustomObject]@{
+            Type             = 'nuget'
+            Namespace        = $null
+            Name             = 'PhoenixmlDb.Xslt'
+            Version          = '1.0.0'
+            Qualifiers       = ''
+            QualifiersParsed = @{}
+            Subpath          = ''
+        }
+
+        $result = Get-PackageFromPurl -purl $purl -localRepository $env:polyglotpm
+
+        $expectedPath = Join-Path $env:polyglotpm 'PhoenixmlDb.Xslt-1.0.0.nupkg'
+        $result | Should -Contain $expectedPath
+        Should -Invoke Invoke-WebRequest -Times 1 -ModuleName polyglot -ParameterFilter {
+            $Uri -eq 'https://api.nuget.org/v3-flatcontainer/phoenixmldb.xslt/1.0.0/phoenixmldb.xslt.1.0.0.nupkg'
+        }
+    }
+
+    It 'Should skip download when nupkg already present' {
+        # Create fake nupkg
+        $nupkgPath = Join-Path $env:polyglotpm 'TestPkg-2.0.0.nupkg'
+        Set-Content -Path $nupkgPath -Value 'fake'
+
+        Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
+
+        $purl = [PSCustomObject]@{
+            Type             = 'nuget'
+            Namespace        = $null
+            Name             = 'TestPkg'
+            Version          = '2.0.0'
+            Qualifiers       = ''
+            QualifiersParsed = @{}
+            Subpath          = ''
+        }
+
+        $result = Get-PackageFromPurl -purl $purl -localRepository $env:polyglotpm
+
+        Should -Invoke Invoke-WebRequest -Times 0 -ModuleName polyglot
+        $result | Should -Contain $nupkgPath
+    }
+
+    It 'Should return installed path when package already extracted' {
+        # Create fake installed directory
+        $installedDir = Join-Path $env:polyglotpm 'InstalledPkg-3.0.0'
+        New-Item -ItemType Directory -Path $installedDir -Force | Out-Null
+
+        Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
+
+        $purl = [PSCustomObject]@{
+            Type             = 'nuget'
+            Namespace        = $null
+            Name             = 'InstalledPkg'
+            Version          = '3.0.0'
+            Qualifiers       = ''
+            QualifiersParsed = @{}
+            Subpath          = ''
+        }
+
+        $result = Get-PackageFromPurl -purl $purl -localRepository $env:polyglotpm
+
+        Should -Invoke Invoke-WebRequest -Times 0 -ModuleName polyglot
+        $result | Should -Contain $installedDir
+    }
+}
+
+Describe 'Resolve-LatestVersion NuGet' {
+    BeforeEach {
+        Clear-LatestVersionCache
+    }
+
+    It 'Should query NuGet flat-container API' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ versions = @('1.0.0', '1.1.0', '2.0.0') }
+        }
+
+        $result = Resolve-LatestVersion -Type 'nuget' -Namespace '' -Name 'PhoenixmlDb.Xslt'
+        $result | Should -Be '2.0.0'
+        Should -Invoke Invoke-RestMethod -Times 1 -ModuleName polyglot -ParameterFilter {
+            $Uri -eq 'https://api.nuget.org/v3-flatcontainer/phoenixmldb.xslt/index.json'
+        }
+    }
+
+    It 'Should return single version when only one exists' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ versions = @('1.0.0') }
+        }
+
+        $result = Resolve-LatestVersion -Type 'nuget' -Namespace '' -Name 'SomePackage'
+        $result | Should -Be '1.0.0'
+    }
+
+    It 'Should cache NuGet results' {
+        Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+            return [PSCustomObject]@{ versions = @('1.0.0') }
+        }
+
+        Resolve-LatestVersion -Type 'nuget' -Namespace '' -Name 'CachedPkg' | Out-Null
+        $result = Resolve-LatestVersion -Type 'nuget' -Namespace '' -Name 'CachedPkg'
+        $result | Should -Be '1.0.0'
+        Should -Invoke Invoke-RestMethod -Times 1 -ModuleName polyglot
     }
 }
 

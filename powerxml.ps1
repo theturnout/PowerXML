@@ -123,7 +123,7 @@ function Transform-Xml {
         $InputObject,        
         [ValidateSet("xproc", "xslt")]
         $processing = "xproc",
-        [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova", "xsltproc")]
+        [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova", "xsltproc", "phoenixml")]
         $processor = "xmlcalabash",
         [hashtable]$PackageResolution,
         [Parameter(Mandatory = $true)] 
@@ -278,8 +278,57 @@ function Transform-Xml {
                 -OutputFile $outputFilePath `
                 -Parameters $options
         }
+        elseif ($processor -eq "phoenixml") {
+            # Phoenixml requires NuGet package resolution
+            $localRepository = Get-LocalRepositoryPath
+            $sbomPath = if ($PackageResolution -and $PackageResolution.sbomPath) { $PackageResolution.sbomPath } else { $null }
+            $targetComposition = if ($PackageResolution) { $PackageResolution.targetComposition } else { $null }
+            $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
+            $additionalPackages = if ($PackageResolution -and $PackageResolution.AdditionalPackages) {
+                @($PackageResolution.AdditionalPackages)
+            }
+            else { $null }
+            $validateSbom = if ($PackageResolution) { [bool]$PackageResolution.ValidateSbom } else { $false }
+
+            $compositionParams = @{
+                localRepository = $localRepository
+            }
+            if ($sbomPath) {
+                $compositionParams.sbomPath = $sbomPath
+            }
+            if ($targetComposition) {
+                $compositionParams.targetComposition = $targetComposition
+            }
+            if ($getLatest) {
+                $compositionParams.GetLatest = $true
+            }
+            if ($validateSbom) {
+                $compositionParams.ValidateSbom = $true
+            }
+
+            # Default AdditionalPackages for phoenixml when no SBOM or packages specified
+            if (-not $sbomPath -and -not $additionalPackages) {
+                $additionalPackages = @(
+                    'pkg:nuget/PhoenixmlDb.Core@1.0.13',
+                    'pkg:nuget/PhoenixmlDb.XQuery@1.0.5',
+                    'pkg:nuget/PhoenixmlDb.Xslt@1.0.0'
+                )
+            }
+            if ($additionalPackages) {
+                $compositionParams.AdditionalPackages = $additionalPackages
+            }
+
+            [array]$paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique
+
+            return Invoke-PhoenixmlXslt `
+                -Stylesheet $stylesheetPath `
+                -InputXml $inputXmlPath `
+                -OutputFile $outputFilePath `
+                -Parameters $options `
+                -AssemblyPaths $paths
+        }
         else {
-            throw "Unsupported processor '$processor' for processing type 'xslt'. Supported processors: dotnet, msxml, xsltproc, altova"
+            throw "Unsupported processor '$processor' for processing type 'xslt'. Supported processors: dotnet, msxml, xsltproc, altova, phoenixml"
         }
     }
     else {
