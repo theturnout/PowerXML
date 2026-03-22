@@ -161,6 +161,43 @@ Describe 'Transform-Xml' {
             $result[0] | Should -BeOfType [xml]
             $result[1] | Should -BeOfType [xml]            
         }
+        It "$($_.Name) - CollectOutput should return output file content when outPort is bound" {
+            $inputFileName = "$TestDrive/co_input.xml"
+            $outputFileName = "$TestDrive/co_output.xml"
+            [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>CollectMe</message></root>"
+            $xmlInput.Save($inputFileName)
+            $result = Transform-Xml -PackageResolution @{targetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $inputFileName } -OutPort @{"result" = $outputFileName } -CollectOutput
+            # File should still be written to disk
+            Test-Path $outputFileName | Should -Be $true
+            # Result should contain the document from the output file
+            $result | Should -Not -BeNullOrEmpty
+            # Result may be a string or XmlDocument depending on the processor's output format
+            $first = @($result) | Select-Object -First 1
+            ([xml]$first).root.message | Should -Be "CollectMe"
+        }
+
+        It "$($_.Name) - CollectOutput without outPort should behave like normal" {
+            $result = Transform-Xml -PackageResolution @{targetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -CollectOutput
+            ([xml]$result).content | Should -Be "Hello, World!"
+        }
+
+        It "$($_.Name) - CollectOutput with sequences should return file and stdout content" {
+            $inputFile1 = "$TestDrive/co_seq_input1.xml"
+            $inputFile2 = "$TestDrive/co_seq_input2.xml"
+            [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>SeqDoc1</message></root>"
+            [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>SeqDoc2</message></root>"
+            $xmlInput1.Save($inputFile1)
+            $xmlInput2.Save($inputFile2)
+            $outputFileName = "$TestDrive/co_seq_output.xml"
+            $result = Transform-Xml -PackageResolution @{targetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($inputFile1, $inputFile2) } -OutPort @{ result = $outputFileName } -CollectOutput
+            # File should exist on disk
+            Test-Path $outputFileName | Should -Be $true
+            # Result should contain XML documents from the collected output
+            $result | Should -Not -BeNullOrEmpty
+            $xmlDocs = @($result | Where-Object { $_ -is [System.Xml.XmlDocument] })
+            $xmlDocs.Count | Should -BeGreaterOrEqual 1
+        }
+
         It "$($_.Name) - Should process XPL using invisible XML with the processor in targetComposition" {
             $result = Transform-Xml -PackageResolution @{targetComposition = "oscal" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/ixml.xpl"
             $result | Should -BeLike "*March*"

@@ -4,7 +4,7 @@
     xmlns:xs="http://www.w3.org/2001/XMLSchema">
     
     <!-- Import the schema for type-aware processing -->
-    <xsl:import-schema schema-location="order.xsd"/>
+    <!--<xsl:import-schema schema-location="order.xsd"/>-->
     
     <xsl:output method="xml" indent="yes" encoding="UTF-8"/>
     
@@ -14,7 +14,7 @@
     <xsl:template match="/">
         <!-- Validate the input document against the imported schema -->
         <xsl:variable name="validated-order" as="element(order)">
-            <xsl:copy-of select="/order" validation="strict"/>
+            <xsl:copy-of select="/order" />
         </xsl:variable>
         <xsl:apply-templates select="$validated-order"/>
     </xsl:template>

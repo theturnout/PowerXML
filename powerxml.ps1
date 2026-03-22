@@ -91,10 +91,16 @@ The kind of processing to run. Default xproc.
 The specific processor to use.
 .PARAMETER PackageResolution
 A hashtable that groups polyglot package manager settings for XProc processing:
-  sbomPath          - Path to a CycloneDX SBOM XML file. Defaults to the bundled sbom.xml.
-  targetComposition - The composition in the SBOM to resolve. Defaults to the first composition.
-  GetLatest         - When $true, resolves the latest version for supported package types
-                      (codeberg, github) via their release API, replacing the SBOM-pinned version.
+  sbomPath            - Path to a CycloneDX SBOM XML file. Defaults to the bundled sbom.xml.
+  targetComposition   - The composition in the SBOM to resolve. Defaults to the first composition.
+  GetLatest           - When $true, resolves the latest version for supported package types
+                        (codeberg, github) via their release API, replacing the SBOM-pinned version.
+  AdditionalPackages  - A single purl string or array of purls to merge into the SBOM.
+                        Matching components (same type/namespace/name) have their version replaced
+                        and hashes removed. Non-matching purls are added as new components.
+                        When no sbomPath is available, an interstitial SBOM is created from these.
+  ValidateSbom        - When $true, runs XSD schema validation against the CycloneDX bom-1.5.xsd
+                        schema when loading the SBOM. Throws on validation errors.
 .PARAMETER inPort
 A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
 .PARAMETER outPort
@@ -130,10 +136,11 @@ function Transform-Xml {
         [array]$passthrough,
         [array]$passthroughJava,
         [bool]$MergeOutput = $true,
-        [hashtable]$Namespace
+        [hashtable]$Namespace,
+        [string]$Configuration,
+        [switch]$CollectOutput
     )
     
-    $isPipelineInput = $MyInvocation.ExpectingInput
     $pipelinePath = Resolve-XmlInput -InputObject $pipeline -Extension "xpl"
     
     $inPortProcessed = $null
@@ -150,6 +157,11 @@ function Transform-Xml {
         $sbomPath = if ($PackageResolution -and $PackageResolution.sbomPath) { $PackageResolution.sbomPath } else { "$PSScriptRoot\sbom.xml" }
         $targetComposition = if ($PackageResolution) { $PackageResolution.targetComposition } else { $null }
         $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
+        $additionalPackages = if ($PackageResolution -and $PackageResolution.AdditionalPackages) {
+            @($PackageResolution.AdditionalPackages)
+        }
+        else { $null }
+        $validateSbom = if ($PackageResolution) { [bool]$PackageResolution.ValidateSbom } else { $false }
 
         $compositionParams = @{
             sbomPath        = $sbomPath
@@ -161,11 +173,16 @@ function Transform-Xml {
         if ($getLatest) {
             $compositionParams.GetLatest = $true
         }
+        if ($additionalPackages) {
+            $compositionParams.AdditionalPackages = $additionalPackages
+        }
+        if ($validateSbom) {
+            $compositionParams.ValidateSbom = $true
+        }
         [array]$paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
         if ($processor -eq "xmlcalabash") {
             return Invoke-XmlCalabash `
                 -paths $paths `
-                -PipeInput $isPipelineInput `
                 -InputObject $InputObject `
                 -pipeline $pipelinePath `
                 -options $options `
@@ -175,12 +192,12 @@ function Transform-Xml {
                 -passthrough $passthrough `
                 -passthroughJava $passthroughJava `
                 -MergeOutput $MergeOutput `
-                -Namespace $Namespace
+                -Namespace $Namespace `
+                -CollectOutput:$CollectOutput
         }
         elseif ($processor -eq "morganaxproc") {
             return Invoke-MorganaXProc `
                 -paths $paths `
-                -PipeInput $isPipelineInput `
                 -InputObject $InputObject `
                 -pipeline $pipelinePath `
                 -options $options `
@@ -190,7 +207,9 @@ function Transform-Xml {
                 -passthrough $passthrough `
                 -passthroughJava $passthroughJava `
                 -MergeOutput $MergeOutput `
-                -Namespace $Namespace
+                -Namespace $Namespace `
+                -Configuration $Configuration `
+                -CollectOutput:$CollectOutput
         }
         else {
             throw "Unsupported processor $processor for processing type $processing"

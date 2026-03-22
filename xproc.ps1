@@ -68,7 +68,8 @@ function Invoke-XmlCalabash {
         [array]$passthrough,
         [array]$passthroughJava,
         [bool]$MergeOutput = $true,
-        [hashtable]$Namespace
+        [hashtable]$Namespace,
+        [switch]$CollectOutput
     )
     # look for the xmlcalabash path
     $processorPath = $paths | Where-Object {
@@ -214,12 +215,29 @@ function Invoke-XmlCalabash {
             $output = $null | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
-    if ($output -is [array]) {
-        return $output -join "`n" | Get-MultiXmlDocuments
+    $stdoutResult = if ($output -is [array]) {
+        $output -join "`n" | Get-MultiXmlDocuments
     }
     else {
-        return $output | Get-MultiXmlDocuments
+        $output | Get-MultiXmlDocuments
     }
+
+    if ($CollectOutput -and $outPort -and $outPort.Count -gt 0) {
+        $collectedFromFiles = @()
+        foreach ($enum in $outPort.GetEnumerator()) {
+            $filePath = $enum.Value
+            if (Test-Path $filePath) {
+                $fileContent = Get-Content -Path $filePath -Raw
+                $collectedFromFiles += @($fileContent | Get-MultiXmlDocuments)
+            }
+        }
+        $combined = @()
+        if ($stdoutResult) { $combined += @($stdoutResult) }
+        if ($collectedFromFiles) { $combined += @($collectedFromFiles) }
+        return $combined
+    }
+
+    return $stdoutResult
 } 
 
 
@@ -238,7 +256,8 @@ function Invoke-MorganaXProc {
         [array]$passthroughJava,
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
-        [string]$Configuration
+        [string]$Configuration,
+        [switch]$CollectOutput
     )
     #$processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8.2")
         
@@ -349,13 +368,30 @@ function Invoke-MorganaXProc {
     else {
         $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
     }
-    if ($output -is [array]) {
-        return $output -join "`n" | Get-MultiXmlDocuments
+    $stdoutResult = if ($output -is [array]) {
+        $output -join "`n" | Get-MultiXmlDocuments
     }
     else {
-        return $output | Get-MultiXmlDocuments
+        $output | Get-MultiXmlDocuments
     }
-} 
+
+    if ($CollectOutput -and $outPort -and $outPort.Count -gt 0) {
+        $collectedFromFiles = @()
+        foreach ($enum in $outPort.GetEnumerator()) {
+            $filePath = $enum.Value
+            if (Test-Path $filePath) {
+                $fileContent = Get-Content -Path $filePath -Raw
+                $collectedFromFiles += @($fileContent | Get-MultiXmlDocuments)
+            }
+        }
+        $combined = @()
+        if ($stdoutResult) { $combined += @($stdoutResult) }
+        if ($collectedFromFiles) { $combined += @($collectedFromFiles) }
+        return $combined
+    }
+
+    return $stdoutResult
+}
 
 function Get-PXClassPath {
     param(
