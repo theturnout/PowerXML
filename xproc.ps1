@@ -77,7 +77,10 @@ function Invoke-XmlCalabash {
     } | Select-Object -First 1
     if ( -not $processorPath) {
         throw "Could not find xmlcalabash processor in software composition paths"
-    }    
+    }
+    if (-not (Test-Path $processorPath -PathType Container)) {
+        throw "XmlCalabash processor directory not found at '$processorPath'. The package cache may be corrupt - delete it and re-run."
+    }
 
     #construct classpath
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
@@ -261,15 +264,19 @@ function Invoke-MorganaXProc {
     )
     #$processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8.2")
         
-    # look for the xmlcalabash path
+    # look for the MorganaXProc path
     $processorPath = $paths | Where-Object {
         $_ -like "*MorganaXProc-IIIse*"
     } | Select-Object -First 1
     if ( -not $processorPath) {
         throw "Could not find MorganaXProc processor in software composition paths"
-    }    
+    }
     #construct classpath
-    $cp = "$processorPath/MorganaXProc-IIIse.jar"
+    $morganaJar = Join-Path $processorPath "MorganaXProc-IIIse.jar"
+    if (-not (Test-Path $morganaJar -PathType Leaf)) {
+        throw "MorganaXProc-IIIse.jar not found at '$processorPath'. The package cache may be corrupt - delete '$processorPath' and re-run."
+    }
+    $cp = $morganaJar
 
     $cp += Get-PXClassPath -paths $paths
     

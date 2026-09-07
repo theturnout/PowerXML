@@ -63,7 +63,16 @@ function Install-Package {
             $extractedDir = Join-Path $LocalRepository $ZipRoot
             if (Test-Path $extractedDir -PathType Container) {
                 Write-Host "Renaming extracted directory '$ZipRoot' to '$Name-$Version'"
-                Rename-Item -Path $extractedDir -NewName "$Name-$Version" -Force
+                if ($ZipRoot -ieq "$Name-$Version") {
+                    # Case-only rename: WinPS 5.1 on NTFS treats these as the same path.
+                    # Use a two-step rename through a temporary name.
+                    $tempName = "$Name-$Version-renaming"
+                    Rename-Item -Path $extractedDir -NewName $tempName -Force
+                    Rename-Item -Path (Join-Path $LocalRepository $tempName) -NewName "$Name-$Version" -Force
+                }
+                else {
+                    Rename-Item -Path $extractedDir -NewName "$Name-$Version" -Force
+                }
             }
             else {
                 Write-Warning "Expected zip root directory '$ZipRoot' not found after extraction."

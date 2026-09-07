@@ -511,7 +511,7 @@ Content-Type: application/xml
         
         # Get just the Content-Types using pipeline
         $contentTypes = Parse-MimeMultipart -MimeString $content -Boundary $boundary |
-            Select-Object -ExpandProperty Headers |
+            ForEach-Object { $_.Headers } |
             ForEach-Object { $_['Content-Type'] }
         
         $contentTypes.Count | Should -Be 11

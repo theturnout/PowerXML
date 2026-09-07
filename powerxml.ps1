@@ -1,3 +1,13 @@
+# WinPS 5.1 compatibility: define platform variables that only exist in PS Core 6+
+if (-not (Get-Variable IsWindows -Scope Global -ErrorAction SilentlyContinue)) {
+    $global:IsWindows = $true
+    $global:IsLinux = $false
+    $global:IsMacOS = $false
+}
+
+# WinPS 5.1 compatibility: System.Xml.Linq is auto-loaded in .NET Core but not .NET Framework
+Add-Type -AssemblyName System.Xml.Linq -ErrorAction SilentlyContinue
+
 . "$PSScriptRoot\xproc.ps1"
 . "$PSScriptRoot\xslt.ps1"
 

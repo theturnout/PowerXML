@@ -10,7 +10,8 @@ BeforeAll {
         $env:polyglotpm = $env:POWERXML_TEST_CACHE
     }
     else {
-        $env:polyglotpm = Join-Path ($env:TEMP ?? $env:TMPDIR ?? "/tmp") "powerxml-test-deps"
+        $tempBase = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { "/tmp" }
+        $env:polyglotpm = Join-Path $tempBase "powerxml-test-deps"
     }
     if (-not (Test-Path $env:polyglotpm)) {
         New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null

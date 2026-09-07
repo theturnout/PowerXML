@@ -25,6 +25,9 @@ function Test-SBOM {
         $resolvedXsd = Resolve-Path $SchemaPath -ErrorAction Stop
 
         $schemaSet = New-Object System.Xml.Schema.XmlSchemaSet
+        # Prevent .NET Framework from auto-resolving xs:import URIs (which would
+        # re-add the SPDX types we supply via stub below, causing "already declared" errors).
+        $schemaSet.XmlResolver = $null
         # Add a minimal SPDX stub so the xs:import in the CycloneDX XSD is satisfied
         # without requiring network access.
         $spdxStub = '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" ' +
