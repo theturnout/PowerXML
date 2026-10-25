@@ -22,7 +22,7 @@ Polyglot enables downloading and managing software dependencies from multiple pa
 Import the module directly:
 
 ```powershell
-Import-Module ./polyglot
+Import-Module ./polyglot.psm1 -Force
 ```
 
 ## Configuration
@@ -65,6 +65,7 @@ Copy-GitHubRelease -RepoOwner "nineml" -RepoName "coffeefilter" `
     -Assets @("coffeefilter-3.3.4.zip") `
     -libPath "./lib"
 ```
+Note: `lib` is an illustrative output path in this example; create it first or replace it with your preferred target directory.
 
 ### List GitHub Releases
 

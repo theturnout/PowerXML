@@ -3,6 +3,7 @@
 ## Transform-Xml Usage Examples
 
 The `Transform-Xml` function allows you to run XProc pipelines using different processors and input types. Below are user-friendly examples for each major piece of functionality.
+Note: Some snippet paths (for example `input.xml`, `output.xml`, `input1.xml`, and `input2.xml`) are illustrative; create those files or substitute equivalent paths in your environment.
 
 ---
 

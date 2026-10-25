@@ -35,7 +35,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 git clone https://github.com/theturnout/PowerXML.git
 
 # Import the module
-Import-Module ./PowerXML/powerxml.psm1 -Force
+Import-Module ./powerxml.psm1 -Force
 ```
 
 Future releases will be available via package manager.
@@ -46,15 +46,15 @@ Future releases will be available via package manager.
 
 ```powershell
 # Run a simple XProc pipeline
-Transform-Xml -Pipeline "./pipelines/hello.xpl"
+Transform-Xml -Pipeline "./test_data/helloWorld.xpl"
 
 # With input and output ports
-Transform-Xml -Pipeline "./pipelines/transform.xpl" `
-    -InPort @{ source = "./input.xml" } `
-    -OutPort @{ result = "./output.xml" }
+Transform-Xml -Pipeline "./test_data/xmlpassthru.xpl" `
+    -InPort @{ source = "./test_data/order.xml" } `
+    -OutPort @{ result = "./test_data/out/order-total.out.xml" }
 
 # Pass options to the pipeline
-Transform-Xml -Pipeline "./pipelines/greet.xpl" `
+Transform-Xml -Pipeline "./test_data/optionalHelloWorld.xpl" `
     -Options @{ name = "World" }
 ```
 
@@ -63,26 +63,26 @@ Transform-Xml -Pipeline "./pipelines/greet.xpl" `
 ```powershell
 # Using .NET XSLT processor
 Transform-Xml -Processing "xslt" -Processor "dotnet" `
-    -Pipeline "./styles/transform.xsl" `
-    -InPort @{ source = "./data.xml" }
+    -Pipeline "./test_data/hello.xsl" `
+    -InPort @{ source = "./test_data/order.xml" }
 
 # Using MSXML (Windows)
 Transform-Xml -Processing "xslt" -Processor "msxml" `
-    -Pipeline "./styles/transform.xsl" `
-    -InPort @{ source = "./data.xml" } `
-    -OutPort @{ result = "./output.xml" }
+    -Pipeline "./test_data/hello.xsl" `
+    -InPort @{ source = "./test_data/order.xml" } `
+    -OutPort @{ result = "./test_data/out/hello.out.xml" }
 ```
 
 ### Working with XML Objects
 
 ```powershell
 # Pass .NET XML object as pipeline
-[xml]$pipeline = Get-Content "./pipeline.xpl" -Raw
+[xml]$pipeline = Get-Content "./test_data/helloWorld.xpl" -Raw
 Transform-Xml -Pipeline $pipeline
 
 # Pass XML string as input
 $xmlInput = "<root><item>Hello</item></root>"
-Transform-Xml -Pipeline "./transform.xpl" `
+Transform-Xml -Pipeline "./test_data/xmlpassthru.xpl" `
     -InPort @{ source = $xmlInput }
 ```
 See [USAGE.md](USAGE.md) for more examples and advanced usage scenarios.
@@ -98,8 +98,8 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object) |
 | `-Processing` | string | Processing type: `xproc` (default) or `xslt` |
 | `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc` |
-| `-InPort` | hashtable | Input port bindings: `@{ portName = "file.xml" }` |
-| `-OutPort` | hashtable | Output port bindings: `@{ portName = "output.xml" }` |
+| `-InPort` | hashtable | Input port bindings: `@{ portName = "./test_data/order.xml" }` |
+| `-OutPort` | hashtable | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }` |
 | `-Options` | hashtable | Pipeline options/parameters |
 | `-targetComposition` | string | SBOM composition for dependency resolution |
 | `-Namespace` | hashtable | Namespace bindings: `@{ prefix = "uri" }` |
@@ -124,9 +124,10 @@ The SBOM defines named "compositions" that group dependencies for specific use c
 
 ```xml
 <composition bom-ref="pester-tests">
+    <aggregate>complete</aggregate>
     <dependencies>
-        <dependency ref="xmlcalabash-3"/>
-        <dependency ref="morganaxproc-1.8"/>
+        <dependency ref="xmlcalabash-3.0.40"/>
+        <dependency ref="morganaxproc-1.8.2"/>
     </dependencies>
 </composition>
 ```
@@ -134,7 +135,7 @@ The SBOM defines named "compositions" that group dependencies for specific use c
 Use the `-targetComposition` parameter to select a composition:
 
 ```powershell
-Transform-Xml -Pipeline "./test.xpl" -targetComposition "pester-tests"
+Transform-Xml -Pipeline "./test_data/helloWorld.xpl" -targetComposition "pester-tests"
 ```
 
 ## Project Structure
