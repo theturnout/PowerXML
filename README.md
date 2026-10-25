@@ -97,7 +97,7 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 |-----------|------|-------------|
 | `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object) |
 | `-Processing` | string | Processing type: `xproc` (default) or `xslt` |
-| `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc` |
+| `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc`, `phoenixml` |
 | `-InPort` | hashtable | Input port bindings: `@{ portName = "./test_data/order.xml" }` |
 | `-OutPort` | hashtable | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }` |
 | `-Options` | hashtable | Pipeline options/parameters |
@@ -181,6 +181,7 @@ Invoke-Pester ./utilities.tests.ps1
 ## See Also
 
 - [USAGE.md](USAGE.md) – Additional usage examples
+- [PROCESSORS.md](PROCESSORS.md) – Processor access methods and evaluation of candidate processors
 - [XProc 3.0 Specification](https://spec.xproc.org/3.0/xproc/)
 - [XSLT 1.0 Specification](https://www.w3.org/TR/xslt-10/)
 
