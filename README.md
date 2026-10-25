@@ -138,6 +138,14 @@ Use the `-TargetComposition` parameter to select a composition:
 Transform-Xml -Pipeline "./test_data/helloWorld.xpl" -TargetComposition "pester-tests"
 ```
 
+### Validating Compositions
+
+To verify that a composition's dependencies are present in the local repository and still match their SBOM hashes, without downloading anything:
+
+```powershell
+Test-Composition -SbomPath "./sbom.xml" -TargetComposition "pester-tests"
+```
+
 ## Project Structure
 
 ```

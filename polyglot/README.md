@@ -57,6 +57,14 @@ Get-PackageFromPurl -Purl $purl
 Copy-SoftwareComposition -SbomPath "sbom.xml" -TargetComposition "oscal"
 ```
 
+### Validate an Installed Composition
+
+```powershell
+Test-Composition -SbomPath "sbom.xml" -TargetComposition "oscal"
+```
+
+Reports per-dependency status (`Installed`, `Missing`, `HashMismatch`, `NoHashes`, or `UnknownComponent`) without downloading anything.
+
 ### Download GitHub Release Directly
 
 ```powershell
@@ -127,6 +135,7 @@ Save-SBOM -Sbom $sbom -Path "output-sbom.xml"
 | `ConvertFrom-PkgUri` | Parse a PURL string into a structured object |
 | `Get-PackageFromPurl` | Download a package and its dependencies from a PURL |
 | `Copy-SoftwareComposition` | Download all dependencies from an SBOM composition |
+| `Test-Composition` | Validate that a composition's dependencies are installed and match their SBOM hashes |
 | `Copy-GitHubRelease` | Download release assets from GitHub |
 | `Get-GitHubReleases` | List available releases for a GitHub repository |
 | `Get-MavenArtifact` | Download a Maven artifact (JAR + POM) |

@@ -11,12 +11,16 @@ BeforeAll {
     $global:TestDir = "TestDrive:/"
     Import-Module "$PSScriptRoot/../polyglot" -DisableNameChecking
 
+    # Save the pre-test repository location so it can be restored afterwards
+    $global:PreviousPolyglotpm = $env:polyglotpm
     $env:polyglotpm = (Join-Path $global:TestDir "polyglotpm")
     New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
 }
 
 AfterAll {
-    #  Remove-Item -Path $global:TestDir -Recurse -Force
+    # Restore the pre-test repository location. Without this, the session keeps
+    # pointing at the Pester TestDrive, which does not exist outside a test run.
+    $env:polyglotpm = $global:PreviousPolyglotpm
 }
 Describe 'polyglot.psm1' {
     It 'Should import without errors' {
@@ -908,5 +912,167 @@ Describe 'Get-LocalRepositoryPath' {
         New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
 
         { Get-LocalRepositoryPath } | Should -Not -Throw
+    }
+}
+
+Describe 'Test-Composition' {
+    BeforeAll {
+        $script:sbomFile = Join-Path $TestDrive 'test-composition-sbom.xml'
+    }
+
+    BeforeEach {
+        $script:repo = Join-Path $TestDrive "tc-repo-$(New-Guid)"
+        New-Item -ItemType Directory -Path $script:repo | Out-Null
+
+        # Sourceforge-style package: zip + installed dir
+        $zipPath = Join-Path $script:repo 'mylib-1.0.0.zip'
+        Set-Content -Path $zipPath -Value 'fake zip content' -NoNewline
+        $script:zipHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+        New-Item -ItemType Directory -Path (Join-Path $script:repo 'mylib-1.0.0') | Out-Null
+
+        # Hashless package: installed dir only
+        New-Item -ItemType Directory -Path (Join-Path $script:repo 'nohashlib-2.0.0') | Out-Null
+
+        # GitHub-style package: asset zip + extracted dir
+        $ghZipPath = Join-Path $script:repo 'ghlib-3.0.0.zip'
+        Set-Content -Path $ghZipPath -Value 'fake gh zip content' -NoNewline
+        $script:ghZipHash = (Get-FileHash -Path $ghZipPath -Algorithm SHA256).Hash
+        New-Item -ItemType Directory -Path (Join-Path $script:repo 'ghlib-3.0.0') | Out-Null
+
+        $sbomXml = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5">
+    <components>
+        <component type="library" bom-ref="sf-comp">
+            <name>mylib</name>
+            <purl>pkg:sourceforge/mylib@1.0.0</purl>
+            <externalReferences>
+                <reference type="distribution">
+                    <url>pkg:sourceforge/mylib@1.0.0?filename=mylib-1.0.0.zip</url>
+                    <hashes>
+                        <hash alg="SHA-256">$($script:zipHash)</hash>
+                    </hashes>
+                </reference>
+            </externalReferences>
+        </component>
+        <component type="library" bom-ref="nohash-comp">
+            <name>nohashlib</name>
+            <purl>pkg:sourceforge/nohashlib@2.0.0</purl>
+        </component>
+        <component type="library" bom-ref="gh-comp">
+            <name>ghlib</name>
+            <purl>pkg:github/owner/ghlib@3.0.0?filename=ghlib-3.0.0.zip</purl>
+            <externalReferences>
+                <reference type="distribution">
+                    <url>pkg:github/owner/ghlib@3.0.0?filename=ghlib-3.0.0.zip</url>
+                    <hashes>
+                        <hash alg="SHA-256">$($script:ghZipHash)</hash>
+                    </hashes>
+                </reference>
+            </externalReferences>
+        </component>
+    </components>
+    <compositions>
+        <composition bom-ref="comp-a">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="sf-comp"/>
+                <dependency ref="nohash-comp"/>
+                <dependency ref="ghost-comp"/>
+            </dependencies>
+        </composition>
+        <composition bom-ref="comp-b">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="gh-comp"/>
+            </dependencies>
+        </composition>
+    </compositions>
+</bom>
+"@
+        Set-Content -Path $script:sbomFile -Value $sbomXml -Encoding UTF8
+    }
+
+    It 'Should report Installed with verified hash for a matching sourceforge package' {
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-a' -LocalRepository $script:repo
+        $sf = $results | Where-Object { $_.BomRef -eq 'sf-comp' }
+        $sf.Status | Should -Be 'Installed'
+        $sf.HashVerified | Should -Be $true
+        $sf.InstalledPath | Should -Be (Join-Path $script:repo 'mylib-1.0.0')
+    }
+
+    It 'Should report HashMismatch when the archive does not match the SBOM' {
+        Set-Content -Path (Join-Path $script:repo 'mylib-1.0.0.zip') -Value 'corrupted zip content' -NoNewline
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-a' -LocalRepository $script:repo
+        $sf = $results | Where-Object { $_.BomRef -eq 'sf-comp' }
+        $sf.Status | Should -Be 'HashMismatch'
+        $sf.HashVerified | Should -Be $false
+        $sf.Detail | Should -BeLike '*Hash mismatch*'
+    }
+
+    It 'Should report Missing when the installed directory is absent' {
+        Remove-Item (Join-Path $script:repo 'mylib-1.0.0') -Recurse -Force
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-a' -LocalRepository $script:repo
+        $sf = $results | Where-Object { $_.BomRef -eq 'sf-comp' }
+        $sf.Status | Should -Be 'Missing'
+        $sf.Detail | Should -BeLike '*still present*'
+    }
+
+    It 'Should report NoHashes when the SBOM carries no hashes' {
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-a' -LocalRepository $script:repo
+        $nohash = $results | Where-Object { $_.BomRef -eq 'nohash-comp' }
+        $nohash.Status | Should -Be 'NoHashes'
+        $nohash.HashVerified | Should -Be $false
+    }
+
+    It 'Should report UnknownComponent for unresolvable bom-refs' {
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-a' -LocalRepository $script:repo
+        $ghost = $results | Where-Object { $_.BomRef -eq 'ghost-comp' }
+        $ghost.Status | Should -Be 'UnknownComponent'
+    }
+
+    It 'Should verify github packages against the asset filename' {
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-b' -LocalRepository $script:repo
+        $gh = $results | Where-Object { $_.BomRef -eq 'gh-comp' }
+        $gh.Status | Should -Be 'Installed'
+        $gh.HashVerified | Should -Be $true
+        $gh.InstalledPath | Should -Be (Join-Path $script:repo 'ghlib-3.0.0')
+    }
+
+    It 'Should report Installed but unverified when the artifact was removed' {
+        Remove-Item (Join-Path $script:repo 'mylib-1.0.0.zip') -Force
+        $results = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-a' -LocalRepository $script:repo
+        $sf = $results | Where-Object { $_.BomRef -eq 'sf-comp' }
+        $sf.Status | Should -Be 'Installed'
+        $sf.HashVerified | Should -Be $false
+        $sf.Detail | Should -BeLike '*no longer present*'
+    }
+
+    It 'Should use the first composition when TargetComposition is omitted' {
+        $results = Test-Composition -SbomPath $script:sbomFile -LocalRepository $script:repo
+        ($results | Where-Object { $_.BomRef -eq 'gh-comp' }) | Should -BeNullOrEmpty
+        ($results | Where-Object { $_.BomRef -eq 'sf-comp' }).Status | Should -Be 'Installed'
+    }
+
+    It 'Should throw when TargetComposition is not found' {
+        { Test-Composition -SbomPath $script:sbomFile -TargetComposition 'nonexistent' -LocalRepository $script:repo } | Should -Throw '*not found*'
+    }
+
+    It 'Should throw when the SBOM file does not exist' {
+        { Test-Composition -SbomPath (Join-Path $TestDrive 'does-not-exist.xml') -LocalRepository $script:repo } | Should -Throw '*not found*'
+    }
+
+    It 'Should never download anything' {
+        Mock Invoke-WebRequest -ModuleName polyglot
+        Mock Invoke-RestMethod -ModuleName polyglot
+        Mock Get-PackageFromPurl -ModuleName polyglot
+        Mock Install-Package -ModuleName polyglot
+
+        Test-Composition -SbomPath $script:sbomFile -LocalRepository $script:repo | Out-Null
+
+        Should -Invoke Invoke-WebRequest -Times 0 -ModuleName polyglot
+        Should -Invoke Invoke-RestMethod -Times 0 -ModuleName polyglot
+        Should -Invoke Get-PackageFromPurl -Times 0 -ModuleName polyglot
+        Should -Invoke Install-Package -Times 0 -ModuleName polyglot
     }
 }

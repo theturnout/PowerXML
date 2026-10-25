@@ -307,6 +307,219 @@ function Copy-SoftwareComposition {
 } 
 <#
 .SYNOPSIS
+  Validates that a software composition from a CycloneDX SBOM is installed in the local repository.
+.DESCRIPTION
+  Reports per-dependency status without downloading anything: whether the installed
+  directory is present, and where possible whether the downloaded artifact still
+  matches the hashes recorded in the SBOM. Useful for detecting corrupted
+  (different files with the same name) or deleted dependencies.
+.PARAMETER SbomPath
+  Path to the CycloneDX SBOM XML file.
+.PARAMETER TargetComposition
+  The specific composition to validate. Defaults to the first composition in the SBOM.
+.PARAMETER LocalRepository
+  The local repository path where the dependencies are installed.
+.PARAMETER ValidateSbom
+  When specified, runs XSD schema validation when loading the SBOM.
+.OUTPUTS
+  One object per composition dependency with BomRef, Name, Version, Type, Status,
+  HashVerified, InstalledPath, and Detail properties. Status is one of:
+  Installed, Missing, HashMismatch, NoHashes, or UnknownComponent.
+#>
+function Test-Composition {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $SbomPath,
+    [string] $TargetComposition,
+    [string] $LocalRepository = (Get-LocalRepositoryPath),
+    [switch] $ValidateSbom
+  )
+
+  if (-not (Test-Path $SbomPath)) {
+    throw "SBOM file not found: '$SbomPath'."
+  }
+  $file = Resolve-Path $SbomPath
+  [xml]$xmlContent = Get-Content -Path $file
+  if (-not (Test-SBOM $xmlContent -ValidateSchema:$ValidateSbom)) {
+    throw "Invalid SBOM file '$SbomPath'."
+  }
+  $bom = $xmlContent.bom
+
+  if (-not $TargetComposition) {
+    $allCompositions = @($bom.compositions.composition)
+    if ($allCompositions.Count -eq 0 -or $null -eq $allCompositions[0]) {
+      throw "No compositions found in SBOM '$SbomPath'."
+    }
+    $composition = $allCompositions[0]
+    Write-Verbose "No TargetComposition specified; using first composition '$($composition."bom-ref")'."
+  }
+  else {
+    $composition = $bom.compositions.composition | Where-Object { $_."bom-ref" -eq $TargetComposition }
+    if (!$composition) {
+      throw "Target composition '$TargetComposition' not found in SBOM '$SbomPath'."
+    }
+  }
+
+  foreach ($dep in @($composition.dependencies.dependency)) {
+    $cur = $dep.ref
+    $component = $bom.components.component | Where-Object { $_."bom-ref" -eq $cur }
+    if (!$component) {
+      Write-Warning "Component with bom-ref $cur not found in SBOM components list"
+      [PSCustomObject]@{
+        BomRef        = $cur
+        Name          = $cur
+        Version       = $null
+        Type           = $null
+        Status        = "UnknownComponent"
+        HashVerified  = $false
+        InstalledPath = $null
+        Detail        = "Component not found in the SBOM components list."
+      }
+      continue
+    }
+
+    # pull the distribution version preferentially over the pkg mgr version
+    $distribution = $component.externalReferences.reference.url
+    if ($distribution) {
+      $purlString = $distribution
+    }
+    else {
+      $purlString = [string]$component.purl
+    }
+    $purl = ConvertFrom-PkgUri($purlString)
+
+    # Collect verifiable hashes from the SBOM (externalReferences and component-level)
+    $hashNodes = @()
+    $extRefHashes = $component.externalReferences.reference.hashes.hash
+    if ($extRefHashes) { $hashNodes += @($extRefHashes) }
+    $componentHashes = $component.hashes.hash
+    if ($componentHashes) { $hashNodes += @($componentHashes) }
+    $supportedAlgorithms = @("MD5", "SHA1", "SHA256", "SHA384", "SHA512")
+    $hashes = @($hashNodes | ForEach-Object {
+      [PSCustomObject]@{
+        Algorithm = ($_.alg -replace "-", "")
+        Hash      = $_.InnerText
+      }
+    } | Where-Object { $_.Algorithm -in $supportedAlgorithms })
+
+    # Resolve the installed directory and the artifact to hash-verify by package type
+    # (purls without qualifiers leave QualifiersParsed unset)
+    $fileName = if ($null -ne $purl.QualifiersParsed) { $purl.QualifiersParsed["filename"] } else { $null }
+    $installedPath = Join-Path $LocalRepository "$($purl.Name)-$($purl.Version)"
+    $verifyPath = $null
+    switch ($purl.Type) {
+      "github" {
+        if ($fileName) {
+          $installedPath = Join-Path $LocalRepository ([System.IO.Path]::GetFileNameWithoutExtension($fileName))
+          $verifyPath = Join-Path $LocalRepository $fileName
+        }
+      }
+      "codeberg" {
+        if ($fileName) {
+          $installedPath = Join-Path $LocalRepository ([System.IO.Path]::GetFileNameWithoutExtension($fileName))
+          $verifyPath = Join-Path $LocalRepository $fileName
+        }
+      }
+      "sourceforge" {
+        $verifyPath = Join-Path $LocalRepository "$($purl.Name)-$($purl.Version).zip"
+      }
+      "nuget" {
+        $verifyPath = Join-Path $LocalRepository "$($purl.Name)-$($purl.Version).nupkg"
+      }
+      "maven" {
+        $verifyPath = Join-Path $installedPath "$($purl.Name)-$($purl.Version).jar"
+      }
+      default {
+        Write-Warning "Package type '$($purl.Type)' is not supported for hash verification; checking existence only."
+      }
+    }
+
+    if (-not (Test-Path $installedPath -PathType Container)) {
+      $detail = "Installed directory not found."
+      if ($verifyPath -and (Test-Path $verifyPath -PathType Leaf)) {
+        $detail += " The downloaded artifact is still present."
+      }
+      [PSCustomObject]@{
+        BomRef        = $cur
+        Name          = $purl.Name
+        Version       = $purl.Version
+        Type          = $purl.Type
+        Status        = "Missing"
+        HashVerified  = $false
+        InstalledPath = $null
+        Detail        = $detail
+      }
+      continue
+    }
+
+    if ($hashes.Count -eq 0) {
+      [PSCustomObject]@{
+        BomRef        = $cur
+        Name          = $purl.Name
+        Version       = $purl.Version
+        Type          = $purl.Type
+        Status        = "NoHashes"
+        HashVerified  = $false
+        InstalledPath = $installedPath
+        Detail        = "Installed, but the SBOM carries no verifiable hashes for this component."
+      }
+      continue
+    }
+
+    if (-not ($verifyPath -and (Test-Path $verifyPath -PathType Leaf))) {
+      [PSCustomObject]@{
+        BomRef        = $cur
+        Name          = $purl.Name
+        Version       = $purl.Version
+        Type          = $purl.Type
+        Status        = "Installed"
+        HashVerified  = $false
+        InstalledPath = $installedPath
+        Detail        = "Installed, but the artifact to hash-verify is no longer present."
+      }
+      continue
+    }
+
+    $verified = $true
+    $firstFailure = $null
+    foreach ($h in $hashes) {
+      try {
+        $null = Test-FileHash -Path $verifyPath -ExpectedHash $h.Hash -Algorithm $h.Algorithm
+      }
+      catch {
+        $verified = $false
+        if (-not $firstFailure) { $firstFailure = $_.Exception.Message }
+      }
+    }
+    if ($verified) {
+      [PSCustomObject]@{
+        BomRef        = $cur
+        Name          = $purl.Name
+        Version       = $purl.Version
+        Type          = $purl.Type
+        Status        = "Installed"
+        HashVerified  = $true
+        InstalledPath = $installedPath
+        Detail        = "Hash verified against the SBOM."
+      }
+    }
+    else {
+      [PSCustomObject]@{
+        BomRef        = $cur
+        Name          = $purl.Name
+        Version       = $purl.Version
+        Type          = $purl.Type
+        Status        = "HashMismatch"
+        HashVerified  = $false
+        InstalledPath = $installedPath
+        Detail        = $firstFailure
+      }
+    }
+  }
+}
+<#
+.SYNOPSIS
 Downloads a package and its dependencies based on the provided Package URL (PURL)
 .PARAMETER Purl
 The Package URL object representing the package to download.
