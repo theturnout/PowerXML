@@ -33,31 +33,31 @@ Describe 'File downloading' {
 
     It 'Should have Download a Specific file from codeberg' {
         #https://github.com/Election-Tech-Initiative/electionguard/releases/tag/v2.1
-        $purl = ConvertFrom-PkgUri "pkg:codeberg/NineML/nineml@3.3.8?filename=coffeefilter-3.3.8.zip"        
-        $paths = Get-PackageFromPurl -purl $purl
+        $Purl = ConvertFrom-PkgUri "pkg:codeberg/NineML/nineml@3.3.8?filename=coffeefilter-3.3.8.zip"        
+        $paths = Get-PackageFromPurl -Purl $Purl
         Test-Path "$env:polyglotpm/coffeefilter-3.3.8" | Should -Be $true
         $paths | Should -Not -Be $null
     }
     It 'Produces a path when file is already downloaded from codeberg' {
         #https://github.com/Election-Tech-Initiative/electionguard/releases/tag/v2.1
-        $purl = ConvertFrom-PkgUri "pkg:codeberg/NineML/nineml@3.3.8?filename=coffeefilter-3.3.8.zip"        
-        $paths = Get-PackageFromPurl -purl $purl
+        $Purl = ConvertFrom-PkgUri "pkg:codeberg/NineML/nineml@3.3.8?filename=coffeefilter-3.3.8.zip"        
+        $paths = Get-PackageFromPurl -Purl $Purl
         $paths | Should -Not -Be $null
     }
        
     It 'Should have Download a Specific file from Maven' {
         #https://github.com/Election-Tech-Initiative/electionguard/releases/tag/v2.1
-        $purl = ConvertFrom-PkgUri "pkg:maven/org.xmlresolver/xmlresolver@6.0.12"        
-        $paths = Get-PackageFromPurl -purl $purl
+        $Purl = ConvertFrom-PkgUri "pkg:maven/org.xmlresolver/xmlresolver@6.0.12"        
+        $paths = Get-PackageFromPurl -Purl $Purl
         Test-Path "$env:polyglotpm/xmlresolver-6.0.12" | Should -Be $true
         $paths | Should -Not -Be $null
     }
     It 'Should download a specific file from SourceForge' {
-        $purl = ConvertFrom-PkgUri "pkg:sourceforge/morganaxproc-IIIse@1.6?filename=MorganaXProc-IIIse-1.6.7/MorganaXProc-IIIse-1.6.7.zip"
-        $downloadedPath = Get-PackageFromPurl -purl $purl
+        $Purl = ConvertFrom-PkgUri "pkg:sourceforge/morganaxproc-IIIse@1.6?filename=MorganaXProc-IIIse-1.6.7/MorganaXProc-IIIse-1.6.7.zip"
+        $downloadedPath = Get-PackageFromPurl -Purl $Purl
         # Post-process: rootZip is SBOM-level metadata, handled by Install-Package
         $installedPath = Install-Package -DownloadedPath $downloadedPath `
-            -Name $purl.Name -Version $purl.Version `
+            -Name $Purl.Name -Version $Purl.Version `
             -ZipRoot "MorganaXProc-IIIse-1.6.7" `
             -LocalRepository $env:polyglotpm
         #path matches the package name, not the file name nor zip root

@@ -40,21 +40,21 @@ $env:polyglotpm = "C:\path\to\your\repo"
 ```powershell
 # Maven artifact
 $purl = ConvertFrom-PkgUri "pkg:maven/org.xmlresolver/xmlresolver@6.0.12"
-Get-PackageFromPurl -purl $purl
+Get-PackageFromPurl -Purl $purl
 
 # GitHub release
 $purl = ConvertFrom-PkgUri "pkg:github/nineml/coffeefilter@3.3.4"
-Get-PackageFromPurl -purl $purl
+Get-PackageFromPurl -Purl $purl
 
 # Codeberg release with specific asset
 $purl = ConvertFrom-PkgUri "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip"
-Get-PackageFromPurl -purl $purl
+Get-PackageFromPurl -Purl $purl
 ```
 
 ### Download from SBOM Composition
 
 ```powershell
-Copy-SoftwareComposition -sbomPath "sbom.xml" -targetComposition "oscal"
+Copy-SoftwareComposition -SbomPath "sbom.xml" -TargetComposition "oscal"
 ```
 
 ### Download GitHub Release Directly

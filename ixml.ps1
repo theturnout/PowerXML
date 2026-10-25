@@ -2,11 +2,11 @@
 <#
 .SYNOPSIS
 Transforms inputs using XML technologies
-.PARAMETER processing
+.PARAMETER Processing
 The kind of processing to run. Default xproc.
-.PARAMETER processor
+.PARAMETER Processor
 The specific processor to use.
-.PARAMETER targetComposition
+.PARAMETER TargetComposition
 The target composition in the SBOM to use to determine which packages are required to run the code.
 .PARAMETER inPipe
 Whether to use the STDIN to pass data to the pipeline's default port.
@@ -14,42 +14,42 @@ Whether to use the STDIN to pass data to the pipeline's default port.
 A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
 .PARAMETER inPort
 A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.xml}
-.PARAMETER passthrough
+.PARAMETER Passthrough
 An array of parameters passed directly to the processor.
-.PARAMETER passthroughJava
+.PARAMETER PassthroughJava
 An array of parameters passed directly to the Java JVM.
 #>
 function Transform-IXml {
     [CmdletBinding()]
     param(
-        $processing = "ixml",
-        $processor = "nineml",
-        $targetComposition = "oscal",        
+        $Processing = "ixml",
+        $Processor = "nineml",
+        $TargetComposition = "oscal",        
         [Parameter(Mandatory = $true)] 
-        $grammar,
+        $Grammar,
         $input,
-        [array]$passthrough,
-        [array]$passthroughJava
+        [array]$Passthrough,
+        [array]$PassthroughJava
     )
     #process bundle
     Import-Module "$PSScriptRoot/polyglot" -Force
     $localRepository = Get-LocalRepositoryPath
     [array]$paths = Copy-SoftwareComposition `
-        -sbomPath "$PSScriptRoot\sbom.xml" `
-        -targetComposition $targetComposition `
-        -localRepository  $localRepository | Select-Object -Unique    
+        -SbomPath "$PSScriptRoot\sbom.xml" `
+        -TargetComposition $TargetComposition `
+        -LocalRepository  $localRepository | Select-Object -Unique    
     
     #$cp = $paths -join ";"
     #convert paths to ClassPath format
 
-    if ($processing -eq "xproc") {
-        if ($processor -eq "nineml") {
+    if ($Processing -eq "xproc") {
+        if ($Processor -eq "nineml") {
             $processorPath = (Join-Path $localRepository "coffeepot-3.2.9")
             
             #construct classpath
             $cp = "$processorPath/coffeepot-3.2.9.jar"
             
-            $cp += Get-PXClassPath -paths $paths
+            $cp += Get-PXClassPath -Paths $paths
             
             $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
             Get-ChildItem "$processorPath\lib" -Filter *.jar |
@@ -60,7 +60,7 @@ function Transform-IXml {
             Write-Host "ClassPath: $cp"
             $xcArgs = @()
 
-            $xcArgs += @("-g,$grammar")
+            $xcArgs += @("-g,$Grammar")
 
             $xcArgs += @("-i,$input")
 

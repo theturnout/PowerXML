@@ -32,7 +32,7 @@ Describe 'SBOM Support' {
     }
 
     It 'Should fail on missing SBOM file' {
-        { Copy-SoftwareComposition -sbomPath "nonexistent.xml" -targetComposition "test" } | Should -Throw
+        { Copy-SoftwareComposition -SbomPath "nonexistent.xml" -TargetComposition "test" } | Should -Throw
     }
 
     It 'Should pass on valid SBOM file' {
@@ -43,36 +43,36 @@ Describe 'SBOM Support' {
 
     It 'Should parse a PURL' {
         $purlString = "pkg:maven/org.apache.commons/commons-lang3@3.12.0?classifier=sources"
-        $purl = ConvertFrom-PkgUri -uriString $purlString
+        $Purl = ConvertFrom-PkgUri -uriString $purlString
 
-        $purl.Type | Should -Be "maven"
-        $purl.Namespace | Should -Be "org.apache.commons"
-        $purl.Name | Should -Be "commons-lang3"
-        $purl.Version | Should -Be "3.12.0"
-        $purl.QualifiersParsed["classifier"] | Should -Be "sources"
+        $Purl.Type | Should -Be "maven"
+        $Purl.Namespace | Should -Be "org.apache.commons"
+        $Purl.Name | Should -Be "commons-lang3"
+        $Purl.Version | Should -Be "3.12.0"
+        $Purl.QualifiersParsed["classifier"] | Should -Be "sources"
     }
 
     It 'Should parse a PURL with subpath' {
         $purlString = "pkg:npm/angular/cli@12.0.0#src/app"
-        $purl = ConvertFrom-PkgUri -uriString $purlString
+        $Purl = ConvertFrom-PkgUri -uriString $purlString
 
-        $purl.Type | Should -Be "npm"
-        $purl.Namespace | Should -Be "angular"
-        $purl.Name | Should -Be "cli"
-        $purl.Version | Should -Be "12.0.0"
-        $purl.Subpath | Should -Be "#src/app"
+        $Purl.Type | Should -Be "npm"
+        $Purl.Namespace | Should -Be "angular"
+        $Purl.Name | Should -Be "cli"
+        $Purl.Version | Should -Be "12.0.0"
+        $Purl.Subpath | Should -Be "#src/app"
     }
 
     It 'Should parse a PURL with multiple qualifiers' {
         $purlString = "pkg:deb/debian/curl@7.50.3-1?arch=amd64&distro=jessie"
-        $purl = ConvertFrom-PkgUri -uriString $purlString
+        $Purl = ConvertFrom-PkgUri -uriString $purlString
 
-        $purl.Type | Should -Be "deb"
-        $purl.Namespace | Should -Be "debian"
-        $purl.Name | Should -Be "curl"
-        $purl.Version | Should -Be "7.50.3-1"
-        $purl.QualifiersParsed["arch"] | Should -Be "amd64"
-        $purl.QualifiersParsed["distro"] | Should -Be "jessie"
+        $Purl.Type | Should -Be "deb"
+        $Purl.Namespace | Should -Be "debian"
+        $Purl.Name | Should -Be "curl"
+        $Purl.Version | Should -Be "7.50.3-1"
+        $Purl.QualifiersParsed["arch"] | Should -Be "amd64"
+        $Purl.QualifiersParsed["distro"] | Should -Be "jessie"
     }
 
     # Add more specific tests for Copy-SoftwareComposition here
@@ -131,12 +131,12 @@ Describe 'Copy-SoftwareComposition composition selection' {
 
     It 'Should use first composition when targetComposition is not specified' {
         # Mock Get-PackageFromPurl so we don't actually download anything
-        Mock Get-PackageFromPurl { return @("$localRepository\fake") } -ModuleName polyglot
+        Mock Get-PackageFromPurl { return @("$LocalRepository\fake") } -ModuleName polyglot
         Mock Install-Package { return $DownloadedPath } -ModuleName polyglot
 
         $result = Copy-SoftwareComposition `
-            -sbomPath $script:twoCompSbom `
-            -localRepository $env:polyglotpm -ValidateSbom -Verbose 4>&1
+            -SbomPath $script:twoCompSbom `
+            -LocalRepository $env:polyglotpm -ValidateSbom -Verbose 4>&1
 
         # Verbose stream should mention the first composition's bom-ref
         $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
@@ -145,13 +145,13 @@ Describe 'Copy-SoftwareComposition composition selection' {
     }
 
     It 'Should use explicit targetComposition when provided' {
-        Mock Get-PackageFromPurl { return @("$localRepository\fake") } -ModuleName polyglot
+        Mock Get-PackageFromPurl { return @("$LocalRepository\fake") } -ModuleName polyglot
         Mock Install-Package { return $DownloadedPath } -ModuleName polyglot
 
         $result = Copy-SoftwareComposition `
-            -sbomPath $script:twoCompSbom `
-            -targetComposition 'second' `
-            -localRepository $env:polyglotpm -ValidateSbom -Verbose 4>&1
+            -SbomPath $script:twoCompSbom `
+            -TargetComposition 'second' `
+            -LocalRepository $env:polyglotpm -ValidateSbom -Verbose 4>&1
 
         # Should NOT emit the auto-select verbose message
         $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
@@ -161,15 +161,15 @@ Describe 'Copy-SoftwareComposition composition selection' {
 
     It 'Should throw when targetComposition is not specified and SBOM has no compositions' {
         { Copy-SoftwareComposition `
-                -sbomPath $script:noCompSbom `
-                -localRepository $env:polyglotpm -ValidateSbom } | Should -Throw '*No compositions found*'
+                -SbomPath $script:noCompSbom `
+                -LocalRepository $env:polyglotpm -ValidateSbom } | Should -Throw '*No compositions found*'
     }
 
     It 'Should throw when explicit targetComposition is not found' {
         { Copy-SoftwareComposition `
-                -sbomPath $script:twoCompSbom `
-                -targetComposition 'nonexistent' `
-                -localRepository $env:polyglotpm -ValidateSbom } | Should -Throw '*not found*'
+                -SbomPath $script:twoCompSbom `
+                -TargetComposition 'nonexistent' `
+                -LocalRepository $env:polyglotpm -ValidateSbom } | Should -Throw '*not found*'
     }
 }
 
@@ -421,15 +421,15 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
         # Capture the purl passed to Get-PackageFromPurl
         $script:capturedPurls = @()
         Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
-            $script:capturedPurls += $purl
-            return @("$localRepository\fake")
+            $script:capturedPurls += $Purl
+            return @("$LocalRepository\fake")
         }
         Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
 
         Copy-SoftwareComposition `
-            -sbomPath $script:getLatestSbom `
-            -targetComposition 'test-latest' `
-            -localRepository $env:polyglotpm `
+            -SbomPath $script:getLatestSbom `
+            -TargetComposition 'test-latest' `
+            -LocalRepository $env:polyglotpm `
             -GetLatest -ValidateSbom
 
         # The github component should have the resolved version
@@ -444,15 +444,15 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
         }
         $script:capturedPurls = @()
         Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
-            $script:capturedPurls += $purl
-            return @("$localRepository\fake")
+            $script:capturedPurls += $Purl
+            return @("$LocalRepository\fake")
         }
         Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
 
         Copy-SoftwareComposition `
-            -sbomPath $script:getLatestSbom `
-            -targetComposition 'test-latest' `
-            -localRepository $env:polyglotpm `
+            -SbomPath $script:getLatestSbom `
+            -TargetComposition 'test-latest' `
+            -LocalRepository $env:polyglotpm `
             -GetLatest -ValidateSbom
 
         # The sourceforge component should keep its pinned version
@@ -466,14 +466,14 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
             return $null
         }
         Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
-            return @("$localRepository\fake")
+            return @("$LocalRepository\fake")
         }
         Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
 
         $result = Copy-SoftwareComposition `
-            -sbomPath $script:getLatestSbom `
-            -targetComposition 'test-latest' `
-            -localRepository $env:polyglotpm `
+            -SbomPath $script:getLatestSbom `
+            -TargetComposition 'test-latest' `
+            -LocalRepository $env:polyglotpm `
             -GetLatest -ValidateSbom -Verbose 4>&1
 
         $verboseMessages = $result | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] }
@@ -487,15 +487,15 @@ Describe 'Copy-SoftwareComposition -GetLatest' {
         }
         $script:capturedPurls = @()
         Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
-            $script:capturedPurls += $purl
-            return @("$localRepository\fake")
+            $script:capturedPurls += $Purl
+            return @("$LocalRepository\fake")
         }
         Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
 
         Copy-SoftwareComposition `
-            -sbomPath $script:getLatestSbom `
-            -targetComposition 'test-latest' `
-            -localRepository $env:polyglotpm `
+            -SbomPath $script:getLatestSbom `
+            -TargetComposition 'test-latest' `
+            -LocalRepository $env:polyglotpm `
             -GetLatest -ValidateSbom
 
         # Version should remain unchanged
@@ -618,8 +618,8 @@ Describe 'Copy-SoftwareComposition -AdditionalPackages' {
     It 'Should merge version override into existing SBOM' {
         $script:capturedPurls = @()
         Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
-            $script:capturedPurls += $purl
-            return @("$localRepository\fake")
+            $script:capturedPurls += $Purl
+            return @("$LocalRepository\fake")
         }
         Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
 
@@ -645,9 +645,9 @@ Describe 'Copy-SoftwareComposition -AdditionalPackages' {
         Set-Content -Path $sbomFile -Value $sbomXml -Encoding UTF8
 
         Copy-SoftwareComposition `
-            -sbomPath $sbomFile `
-            -targetComposition 'test' `
-            -localRepository $env:polyglotpm `
+            -SbomPath $sbomFile `
+            -TargetComposition 'test' `
+            -LocalRepository $env:polyglotpm `
             -AdditionalPackages @('pkg:github/xmlcalabash/xmlcalabash3@3.0.0-beta6') `
             -ValidateSbom
 
@@ -658,14 +658,14 @@ Describe 'Copy-SoftwareComposition -AdditionalPackages' {
     It 'Should create interstitial SBOM when no sbomPath exists' {
         $script:capturedPurls = @()
         Mock Get-PackageFromPurl -ModuleName polyglot -MockWith {
-            $script:capturedPurls += $purl
-            return @("$localRepository\fake")
+            $script:capturedPurls += $Purl
+            return @("$LocalRepository\fake")
         }
         Mock Install-Package -ModuleName polyglot -MockWith { return $DownloadedPath }
 
         Copy-SoftwareComposition `
-            -sbomPath (Join-Path $TestDrive 'nonexistent-sbom.xml') `
-            -localRepository $env:polyglotpm `
+            -SbomPath (Join-Path $TestDrive 'nonexistent-sbom.xml') `
+            -LocalRepository $env:polyglotpm `
             -AdditionalPackages @('pkg:github/owner/newpkg@2.0.0') `
             -ValidateSbom
 
@@ -676,8 +676,8 @@ Describe 'Copy-SoftwareComposition -AdditionalPackages' {
 
     It 'Should still throw when no sbomPath and no AdditionalPackages' {
         { Copy-SoftwareComposition `
-            -sbomPath 'nonexistent-sbom.xml' `
-            -localRepository $env:polyglotpm -ValidateSbom } | Should -Throw
+            -SbomPath 'nonexistent-sbom.xml' `
+            -LocalRepository $env:polyglotpm -ValidateSbom } | Should -Throw
     }
 }
 
@@ -738,20 +738,20 @@ Describe 'Test-SBOM -ValidateSchema' {
 Describe 'NuGet PURL support' {
     It 'Should parse a NuGet PURL without namespace' {
         $purlString = "pkg:nuget/PhoenixmlDb.Xslt@1.0.0"
-        $purl = ConvertFrom-PkgUri -uriString $purlString
+        $Purl = ConvertFrom-PkgUri -uriString $purlString
 
-        $purl.Type | Should -Be "nuget"
-        $purl.Name | Should -Be "PhoenixmlDb.Xslt"
-        $purl.Version | Should -Be "1.0.0"
+        $Purl.Type | Should -Be "nuget"
+        $Purl.Name | Should -Be "PhoenixmlDb.Xslt"
+        $Purl.Version | Should -Be "1.0.0"
     }
 
     It 'Should parse a NuGet PURL with qualifiers' {
         $purlString = "pkg:nuget/Newtonsoft.Json@13.0.3?repository_url=https://github.com/JamesNK/Newtonsoft.Json"
-        $purl = ConvertFrom-PkgUri -uriString $purlString
+        $Purl = ConvertFrom-PkgUri -uriString $purlString
 
-        $purl.Type | Should -Be "nuget"
-        $purl.Name | Should -Be "Newtonsoft.Json"
-        $purl.Version | Should -Be "13.0.3"
+        $Purl.Type | Should -Be "nuget"
+        $Purl.Name | Should -Be "Newtonsoft.Json"
+        $Purl.Version | Should -Be "13.0.3"
     }
 }
 
@@ -759,7 +759,7 @@ Describe 'Get-PackageFromPurl NuGet handler' {
     It 'Should download nupkg from NuGet API' {
         Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
 
-        $purl = [PSCustomObject]@{
+        $Purl = [PSCustomObject]@{
             Type             = 'nuget'
             Namespace        = $null
             Name             = 'PhoenixmlDb.Xslt'
@@ -769,7 +769,7 @@ Describe 'Get-PackageFromPurl NuGet handler' {
             Subpath          = ''
         }
 
-        $result = Get-PackageFromPurl -purl $purl -localRepository $env:polyglotpm
+        $result = Get-PackageFromPurl -Purl $Purl -LocalRepository $env:polyglotpm
 
         $expectedPath = Join-Path $env:polyglotpm 'PhoenixmlDb.Xslt-1.0.0.nupkg'
         $result | Should -Contain $expectedPath
@@ -785,7 +785,7 @@ Describe 'Get-PackageFromPurl NuGet handler' {
 
         Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
 
-        $purl = [PSCustomObject]@{
+        $Purl = [PSCustomObject]@{
             Type             = 'nuget'
             Namespace        = $null
             Name             = 'TestPkg'
@@ -795,7 +795,7 @@ Describe 'Get-PackageFromPurl NuGet handler' {
             Subpath          = ''
         }
 
-        $result = Get-PackageFromPurl -purl $purl -localRepository $env:polyglotpm
+        $result = Get-PackageFromPurl -Purl $Purl -LocalRepository $env:polyglotpm
 
         Should -Invoke Invoke-WebRequest -Times 0 -ModuleName polyglot
         $result | Should -Contain $nupkgPath
@@ -808,7 +808,7 @@ Describe 'Get-PackageFromPurl NuGet handler' {
 
         Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
 
-        $purl = [PSCustomObject]@{
+        $Purl = [PSCustomObject]@{
             Type             = 'nuget'
             Namespace        = $null
             Name             = 'InstalledPkg'
@@ -818,7 +818,7 @@ Describe 'Get-PackageFromPurl NuGet handler' {
             Subpath          = ''
         }
 
-        $result = Get-PackageFromPurl -purl $purl -localRepository $env:polyglotpm
+        $result = Get-PackageFromPurl -Purl $Purl -LocalRepository $env:polyglotpm
 
         Should -Invoke Invoke-WebRequest -Times 0 -ModuleName polyglot
         $result | Should -Contain $installedDir

@@ -16,7 +16,7 @@ Add-Type -AssemblyName System.Xml.Linq -ErrorAction SilentlyContinue
 The input to resolve, which can be an XML object or a string containing XML content.
 .PARAMETER Extension
 The file extension to use for the temporary file if the input is XML content. Default is "xml". Only matters if the processor handles files of certain extensions differently.
-.PARAMETER targetEncoding
+.PARAMETER TargetEncoding
 The target encoding to use when writing the XML content to a temporary file. Default is "UTF8". Supported encodings include "UTF8", "UTF16", "UTF16LE", "UTF16BE", "ISO-8859-1", and "US-ASCII".
 .NOTES
 Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path) will be returned as-is.
@@ -27,7 +27,7 @@ function Resolve-XmlInput {
         [Parameter(Mandatory = $true)]
         $InputObject,
         [string]$Extension = "xml",        
-        [string]$targetEncoding = "UTF8"
+        [string]$TargetEncoding = "UTF8"
     )
     $xmlTypes = @(
         'System.Xml.XmlDocument',
@@ -43,7 +43,7 @@ function Resolve-XmlInput {
             foreach ($item in $InputObject) {
                 $resolvedArray += Resolve-XmlInput -InputObject $item `
                     -Extension $Extension `
-                    -targetEncoding $targetEncoding
+                    -TargetEncoding $TargetEncoding
             }
             return $resolvedArray
         }
@@ -65,7 +65,7 @@ function Resolve-XmlInput {
     }
     if ($isXml) {
         $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".$Extension")
-        $encoding = $targetEncoding.ToUpperInvariant()
+        $encoding = $TargetEncoding.ToUpperInvariant()
         if ($InputObject -is [string]) {
             $xmlContent = $tryXml.OuterXml
         }
@@ -95,14 +95,14 @@ function Resolve-XmlInput {
 <#
 .SYNOPSIS
 Transforms inputs using XML technologies
-.PARAMETER processing
+.PARAMETER Processing
 The kind of processing to run. Default xproc.
-.PARAMETER processor
+.PARAMETER Processor
 The specific processor to use.
 .PARAMETER PackageResolution
 A hashtable that groups polyglot package manager settings for XProc processing:
-  sbomPath            - Path to a CycloneDX SBOM XML file. Defaults to the bundled sbom.xml.
-  targetComposition   - The composition in the SBOM to resolve. Defaults to the first composition.
+  SbomPath            - Path to a CycloneDX SBOM XML file. Defaults to the bundled sbom.xml.
+  TargetComposition   - The composition in the SBOM to resolve. Defaults to the first composition.
   GetLatest           - When $true, resolves the latest version for supported package types
                         (codeberg, github) via their release API, replacing the SBOM-pinned version.
   AdditionalPackages  - A single purl string or array of purls to merge into the SBOM.
@@ -111,15 +111,15 @@ A hashtable that groups polyglot package manager settings for XProc processing:
                         When no sbomPath is available, an interstitial SBOM is created from these.
   ValidateSbom        - When $true, runs XSD schema validation against the CycloneDX bom-1.5.xsd
                         schema when loading the SBOM. Throws on validation errors.
-.PARAMETER inPort
+.PARAMETER InPort
 A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
-.PARAMETER outPort
+.PARAMETER OutPort
 A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.xml}
-.PARAMETER catalog
+.PARAMETER Catalog
 The path to an XML catalog file to use for resolving XML resources.
-.PARAMETER passthrough
+.PARAMETER Passthrough
 An array of parameters passed directly to the processor.
-.PARAMETER passthroughJava
+.PARAMETER PassthroughJava
 An array of parameters passed directly to the Java JVM.
 .PARAMETER MergeOutput
 Merges the STDOUT and STDERR of the processor into a single stream. Default is true.
@@ -132,40 +132,40 @@ function Transform-Xml {
         [Parameter(ValueFromPipeline = $true)]
         $InputObject,        
         [ValidateSet("xproc", "xslt")]
-        $processing = "xproc",
+        $Processing = "xproc",
         [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova", "xsltproc", "phoenixml")]
-        $processor = "xmlcalabash",
+        $Processor = "xmlcalabash",
         [hashtable]$PackageResolution,
         [Parameter(Mandatory = $true)] 
-        $pipeline,        
+        $Pipeline,        
         [Alias("parameters")]
-        [hashtable]$options,
-        [hashtable]$inPort,
-        [hashtable]$outPort,
-        [string]$catalog,
-        [array]$passthrough,
-        [array]$passthroughJava,
+        [hashtable]$Options,
+        [hashtable]$InPort,
+        [hashtable]$OutPort,
+        [string]$Catalog,
+        [array]$Passthrough,
+        [array]$PassthroughJava,
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
         [string]$Configuration,
         [switch]$CollectOutput
     )
     
-    $pipelinePath = Resolve-XmlInput -InputObject $pipeline -Extension "xpl"
+    $pipelinePath = Resolve-XmlInput -InputObject $Pipeline -Extension "xpl"
     
     $inPortProcessed = $null
-    if ($inPort) {
+    if ($InPort) {
         $inPortProcessed = @{}
-        foreach ($key in $inPort.Keys) {
-            $val = $inPort[$key]
+        foreach ($key in $InPort.Keys) {
+            $val = $InPort[$key]
             $inPortProcessed[$key] = Resolve-XmlInput -InputObject $val -Extension "xml"
         }
     }
-    if ($processing -eq "xproc") {
+    if ($Processing -eq "xproc") {
         $localRepository = Get-LocalRepositoryPath
         # Unpack PackageResolution settings with defaults
-        $sbomPath = if ($PackageResolution -and $PackageResolution.sbomPath) { $PackageResolution.sbomPath } else { "$PSScriptRoot\sbom.xml" }
-        $targetComposition = if ($PackageResolution) { $PackageResolution.targetComposition } else { $null }
+        $sbomPath = if ($PackageResolution -and $PackageResolution.SbomPath) { $PackageResolution.SbomPath } else { "$PSScriptRoot\sbom.xml" }
+        $targetComposition = if ($PackageResolution) { $PackageResolution.TargetComposition } else { $null }
         $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
         $additionalPackages = if ($PackageResolution -and $PackageResolution.AdditionalPackages) {
             @($PackageResolution.AdditionalPackages)
@@ -174,11 +174,11 @@ function Transform-Xml {
         $validateSbom = if ($PackageResolution) { [bool]$PackageResolution.ValidateSbom } else { $false }
 
         $compositionParams = @{
-            sbomPath        = $sbomPath
-            localRepository = $localRepository
+            SbomPath        = $sbomPath
+            LocalRepository = $localRepository
         }
         if ($targetComposition) {
-            $compositionParams.targetComposition = $targetComposition
+            $compositionParams.TargetComposition = $targetComposition
         }
         if ($getLatest) {
             $compositionParams.GetLatest = $true
@@ -189,50 +189,50 @@ function Transform-Xml {
         if ($validateSbom) {
             $compositionParams.ValidateSbom = $true
         }
-        [array]$paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
-        if ($processor -eq "xmlcalabash") {
+        [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
+        if ($Processor -eq "xmlcalabash") {
             return Invoke-XmlCalabash `
-                -paths $paths `
+                -Paths $Paths `
                 -InputObject $InputObject `
-                -pipeline $pipelinePath `
-                -options $options `
-                -inPort $inPortProcessed `
-                -outPort $outPort `
-                -catalog $catalog `
-                -passthrough $passthrough `
-                -passthroughJava $passthroughJava `
+                -Pipeline $pipelinePath `
+                -Options $Options `
+                -InPort $inPortProcessed `
+                -OutPort $OutPort `
+                -Catalog $Catalog `
+                -Passthrough $Passthrough `
+                -PassthroughJava $PassthroughJava `
                 -MergeOutput $MergeOutput `
                 -Namespace $Namespace `
                 -CollectOutput:$CollectOutput
         }
-        elseif ($processor -eq "morganaxproc") {
+        elseif ($Processor -eq "morganaxproc") {
             return Invoke-MorganaXProc `
-                -paths $paths `
+                -Paths $Paths `
                 -InputObject $InputObject `
-                -pipeline $pipelinePath `
-                -options $options `
-                -inPort $inPortProcessed `
-                -outPort $outPort `
-                -catalog $catalog `
-                -passthrough $passthrough `
-                -passthroughJava $passthroughJava `
+                -Pipeline $pipelinePath `
+                -Options $Options `
+                -InPort $inPortProcessed `
+                -OutPort $OutPort `
+                -Catalog $Catalog `
+                -Passthrough $Passthrough `
+                -PassthroughJava $PassthroughJava `
                 -MergeOutput $MergeOutput `
                 -Namespace $Namespace `
                 -Configuration $Configuration `
                 -CollectOutput:$CollectOutput
         }
         else {
-            throw "Unsupported processor $processor for processing type $processing"
+            throw "Unsupported processor $Processor for processing type $Processing"
         }
     }
-    elseif ($processing -eq "xslt") {
+    elseif ($Processing -eq "xslt") {
         # For XSLT processing:
         # - pipeline parameter is the stylesheet
         # - inPort with 'source' key is the input XML
         # - outPort with 'result' key is the output file (optional)
         # - options are XSLT parameters
         
-        $stylesheetPath = Resolve-XmlInput -InputObject $pipeline -Extension "xsl"
+        $stylesheetPath = Resolve-XmlInput -InputObject $Pipeline -Extension "xsl"
         
         # Get input XML from inPort 'source' key, or use first value
         $inputXmlPath = $null
@@ -246,53 +246,53 @@ function Transform-Xml {
         }
         
         if (-not $inputXmlPath) {
-            throw "XSLT processing requires input XML. Use -inPort @{source = 'input.xml'}"
+            throw "XSLT processing requires input XML. Use -InPort @{source = 'input.xml'}"
         }
         
         # Get output file from outPort 'result' key, or use first value
         $outputFilePath = $null
-        if ($outPort -and $outPort.Count -gt 0) {
-            if ($outPort.ContainsKey('result')) {
-                $outputFilePath = $outPort['result']
+        if ($OutPort -and $OutPort.Count -gt 0) {
+            if ($OutPort.ContainsKey('result')) {
+                $outputFilePath = $OutPort['result']
             }
             else {
-                $outputFilePath = $outPort.Values | Select-Object -First 1
+                $outputFilePath = $OutPort.Values | Select-Object -First 1
             }
         }
         
-        if ($processor -eq "dotnet") {
+        if ($Processor -eq "dotnet") {
             return Invoke-DotNetXslt `
                 -Stylesheet $stylesheetPath `
                 -InputXml $inputXmlPath `
                 -OutputFile $outputFilePath `
-                -Parameters $options
+                -Parameters $Options
         }
-        elseif ($processor -eq "msxml") {
+        elseif ($Processor -eq "msxml") {
             return Invoke-MsxmlXslt `
                 -Stylesheet $stylesheetPath `
                 -InputXml $inputXmlPath `
                 -OutputFile $outputFilePath `
-                -Parameters $options
+                -Parameters $Options
         }
-        elseif ($processor -eq "xsltproc") {
+        elseif ($Processor -eq "xsltproc") {
             return Invoke-XsltprocXslt `
                 -Stylesheet $stylesheetPath `
                 -InputXml $inputXmlPath `
                 -OutputFile $outputFilePath `
-                -Parameters $options
+                -Parameters $Options
         }
-        elseif ($processor -eq "altova") {
+        elseif ($Processor -eq "altova") {
             return Invoke-AltovaXslt `
                 -Stylesheet $stylesheetPath `
                 -InputXml $inputXmlPath `
                 -OutputFile $outputFilePath `
-                -Parameters $options
+                -Parameters $Options
         }
-        elseif ($processor -eq "phoenixml") {
+        elseif ($Processor -eq "phoenixml") {
             # Phoenixml requires NuGet package resolution
             $localRepository = Get-LocalRepositoryPath
-            $sbomPath = if ($PackageResolution -and $PackageResolution.sbomPath) { $PackageResolution.sbomPath } else { $null }
-            $targetComposition = if ($PackageResolution) { $PackageResolution.targetComposition } else { $null }
+            $sbomPath = if ($PackageResolution -and $PackageResolution.SbomPath) { $PackageResolution.SbomPath } else { $null }
+            $targetComposition = if ($PackageResolution) { $PackageResolution.TargetComposition } else { $null }
             $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
             $additionalPackages = if ($PackageResolution -and $PackageResolution.AdditionalPackages) {
                 @($PackageResolution.AdditionalPackages)
@@ -301,13 +301,13 @@ function Transform-Xml {
             $validateSbom = if ($PackageResolution) { [bool]$PackageResolution.ValidateSbom } else { $false }
 
             $compositionParams = @{
-                localRepository = $localRepository
+                LocalRepository = $localRepository
             }
             if ($sbomPath) {
-                $compositionParams.sbomPath = $sbomPath
+                $compositionParams.SbomPath = $sbomPath
             }
             if ($targetComposition) {
-                $compositionParams.targetComposition = $targetComposition
+                $compositionParams.TargetComposition = $targetComposition
             }
             if ($getLatest) {
                 $compositionParams.GetLatest = $true
@@ -328,21 +328,21 @@ function Transform-Xml {
                 $compositionParams.AdditionalPackages = $additionalPackages
             }
 
-            [array]$paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique
+            [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique
 
             return Invoke-PhoenixmlXslt `
                 -Stylesheet $stylesheetPath `
                 -InputXml $inputXmlPath `
                 -OutputFile $outputFilePath `
-                -Parameters $options `
-                -AssemblyPaths $paths
+                -Parameters $Options `
+                -AssemblyPaths $Paths
         }
         else {
-            throw "Unsupported processor '$processor' for processing type 'xslt'. Supported processors: dotnet, msxml, xsltproc, altova, phoenixml"
+            throw "Unsupported processor '$Processor' for processing type 'xslt'. Supported processors: dotnet, msxml, xsltproc, altova, phoenixml"
         }
     }
     else {
-        throw "Unsupported processing type '$processing'. Supported types: xproc, xslt"
+        throw "Unsupported processing type '$Processing'. Supported types: xproc, xslt"
     }
     # Clean up temp file if created
     #  if ($null -ne $tempPipelineFile -and (Test-Path $tempPipelineFile)) {

@@ -53,7 +53,7 @@ Transform-Xml
 [xml]$xmlInput = "<?xml version='1.0' encoding='utf-8'?><root><message>Hello, World!</message></root>"
 $xmlInput.Save("./input.xml")
 Transform-Xml 
-	-targetComposition "pester-tests" 
+	-TargetComposition "pester-tests" 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/xmlpassthru.xpl" 
 	-InPort @{ "source" = "./input.xml" } 
@@ -106,7 +106,7 @@ Because the output is a real `XmlDocument`, you can drill into any element:
 
 ```powershell
 [xml]$info = Transform-Xml `
-	-targetComposition "pester-tests" `
+	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/processor.xpl"
 
@@ -123,7 +123,7 @@ You can pipe a .NET `[xml]` object directly into `Transform-Xml` via the PowerSh
 [xml]$xmlInput = "<root><message>Hello, World!</message></root>"
 
 $xmlInput | Transform-Xml `
-	-targetComposition "pester-tests" `
+	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlpassthru.xpl" `
 	-OutPort @{ "result" = "./output.xml" }
@@ -140,7 +140,7 @@ When a pipeline produces multiple documents, `Transform-Xml` returns an array of
 [xml]$doc2 = "<root><message>Doc2</message></root>"
 
 $results = Transform-Xml `
-	-targetComposition "pester-tests" `
+	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlseqpassthru.xpl" `
 	-InPort @{ source = @($doc1, $doc2) }
@@ -162,7 +162,7 @@ Since inputs and outputs are native .NET objects, you can chain transformations 
 ```powershell
 # Run a pipeline, then query the XML result
 $messages = Transform-Xml `
-	-targetComposition "pester-tests" `
+	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlseqpassthru.xpl" `
 	-InPort @{ source = @("./input1.xml", "./input2.xml") } |
@@ -174,9 +174,9 @@ For more details, see the module documentation or run `Get-Help Transform-Xml` i
 
 ## Using CycloneDX SBOMs
 
-PowerXML uses the CycloneDX Software Bill of Materials (SBOM) as a manifest format. PolyglotPM understands a small subset of CycloneDX structures, primarily components and compositions. Components are defined with Package URLs (PURLs) that specify where to retrieve them from various package ecosystems. Components form a library of artifacts that can be aggregated into compositions, which may be called for by a particular invocation of `Transform-Xml` via the `-targetComposition` parameter. This allows you to define complex software compositions and their dependencies in a standardized format, and have PolyglotPM handle the retrieval and management of those dependencies automatically.
+PowerXML uses the CycloneDX Software Bill of Materials (SBOM) as a manifest format. PolyglotPM understands a small subset of CycloneDX structures, primarily components and compositions. Components are defined with Package URLs (PURLs) that specify where to retrieve them from various package ecosystems. Components form a library of artifacts that can be aggregated into compositions, which may be called for by a particular invocation of `Transform-Xml` via the `-TargetComposition` parameter. This allows you to define complex software compositions and their dependencies in a standardized format, and have PolyglotPM handle the retrieval and management of those dependencies automatically.
 
 Notes
 
-- PolyglotPM is only used by `Transform-Xml` when the `-processing` parameter is set to `xproc`. It cannot retrieve dependencies for other processors or for non-XProc pipelines.
+- PolyglotPM is only used by `Transform-Xml` when the `-Processing` parameter is set to `xproc`. It cannot retrieve dependencies for other processors or for non-XProc pipelines.
 

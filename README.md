@@ -101,11 +101,11 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-InPort` | hashtable | Input port bindings: `@{ portName = "./test_data/order.xml" }` |
 | `-OutPort` | hashtable | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }` |
 | `-Options` | hashtable | Pipeline options/parameters |
-| `-targetComposition` | string | SBOM composition for dependency resolution |
+| `-TargetComposition` | string | SBOM composition for dependency resolution |
 | `-Namespace` | hashtable | Namespace bindings: `@{ prefix = "uri" }` |
-| `-catalog` | string | XML catalog file path |
-| `-passthrough` | array | Arguments passed directly to the processor |
-| `-passthroughJava` | array | Arguments passed to the JVM |
+| `-Catalog` | string | XML catalog file path |
+| `-Passthrough` | array | Arguments passed directly to the processor |
+| `-PassthroughJava` | array | Arguments passed to the JVM |
 
 ## Dependency Management
 
@@ -132,10 +132,10 @@ The SBOM defines named "compositions" that group dependencies for specific use c
 </composition>
 ```
 
-Use the `-targetComposition` parameter to select a composition:
+Use the `-TargetComposition` parameter to select a composition:
 
 ```powershell
-Transform-Xml -Pipeline "./test_data/helloWorld.xpl" -targetComposition "pester-tests"
+Transform-Xml -Pipeline "./test_data/helloWorld.xpl" -TargetComposition "pester-tests"
 ```
 
 ## Project Structure

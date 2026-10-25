@@ -51,28 +51,28 @@ function Get-MultiXmlDocuments {
 <#
 .SYNOPSIS
 Invokes the XmlCalabash processor with the specified parameters.
-.PARAMETER paths
+.PARAMETER Paths
 An array of paths to search for the XmlCalabash processor and its dependencies.
 #> 
 function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(
-        [array]$paths,        
+        [array]$Paths,        
         $InputObject,
         [Parameter(Mandatory = $true)] 
-        $pipeline,        
-        [hashtable]$options,
-        [hashtable]$inPort,
-        [hashtable]$outPort,
-        [string]$catalog,
-        [array]$passthrough,
-        [array]$passthroughJava,
+        $Pipeline,        
+        [hashtable]$Options,
+        [hashtable]$InPort,
+        [hashtable]$OutPort,
+        [string]$Catalog,
+        [array]$Passthrough,
+        [array]$PassthroughJava,
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
         [switch]$CollectOutput
     )
     # look for the xmlcalabash path
-    $processorPath = $paths | Where-Object {
+    $processorPath = $Paths | Where-Object {
         $_ -like "*xmlcalabash*"        
     } | Select-Object -First 1
     if ( -not $processorPath) {
@@ -86,7 +86,7 @@ function Invoke-XmlCalabash {
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
     $cp = "$processorPath/*$cpDelimiter"
 
-    $cp += Get-PXClassPath -paths $paths -shortenClassPath
+    $cp += Get-PXClassPath -Paths $Paths -ShortenClassPath
 
     #    Get-ChildItem "$processorPath\lib" -Filter *.jar |
     #        ForEach-Object {
@@ -101,9 +101,9 @@ function Invoke-XmlCalabash {
     Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
-    if ($inPort) {
+    if ($InPort) {
         $xcInput = @()
-        foreach ($enum in $inPort.GetEnumerator()) {
+        foreach ($enum in $InPort.GetEnumerator()) {
             $portName = $enum.Key
             $portVal = $enum.Value
             if ($portVal -is [array]) {
@@ -117,9 +117,9 @@ function Invoke-XmlCalabash {
         }
         $xcArgs += $xcInput
     }
-    if ($outPort) {
+    if ($OutPort) {
         $xcOutput = @()
-        foreach ($enum in $outPort.GetEnumerator()) {
+        foreach ($enum in $OutPort.GetEnumerator()) {
             $xcOutput += ("--output:$($enum.Key)=`"$($enum.Value)`"")                        
         }
         $xcArgs += $xcOutput
@@ -129,8 +129,8 @@ function Invoke-XmlCalabash {
     #     $xcArgs += ("--output-multiplex:$($mimeOut.FullName)")
     # }
 
-    if ($catalog) {
-        $xcArgs += @("--catalog:`"$catalog`"")
+    if ($Catalog) {
+        $xcArgs += @("--catalog:`"$Catalog`"")
     }
 
     #handle STDIN
@@ -138,13 +138,13 @@ function Invoke-XmlCalabash {
         $xcArgs += @("--pipe")
     }
 
-    if ($passthrough) {
-        $xcArgs += $passthrough
+    if ($Passthrough) {
+        $xcArgs += $Passthrough
     }
         
-    if ($options) {
+    if ($Options) {
         $xcOptions = @()
-        foreach ($enum in $options.GetEnumerator()) {
+        foreach ($enum in $Options.GetEnumerator()) {
             $xcOptions += ("$($enum.Key)=$($enum.Value)")
         }
         $xcArgs += $xcOptions
@@ -188,7 +188,7 @@ function Invoke-XmlCalabash {
         $xcArgs += @("--configuration:`"$tempFile`"")
     }
         
-    $xcArgs += @($pipeline)
+    $xcArgs += @($Pipeline)
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
     Write-Debug "args to processor is $xcArgs"
@@ -202,20 +202,20 @@ function Invoke-XmlCalabash {
 
     if ($null -ne $stdinString) {
         if ($MergeOutput) {
-            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            $output = $stdinString | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
         }
         else {
-            $output = $stdinString | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+            $output = $stdinString | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
     else {
         # this will break if someone is missing an inport and the processor 
         # tried to bind it to stdin
         if ($MergeOutput) {
-            $output = $null | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            $output = $null | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
         }
         else {
-            $output = $null | & java -cp "$cp" @passthroughJava com.xmlcalabash.app.Main @xcArgs
+            $output = $null | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
     $stdoutResult = if ($output -is [array]) {
@@ -225,9 +225,9 @@ function Invoke-XmlCalabash {
         $output | Get-MultiXmlDocuments
     }
 
-    if ($CollectOutput -and $outPort -and $outPort.Count -gt 0) {
+    if ($CollectOutput -and $OutPort -and $OutPort.Count -gt 0) {
         $collectedFromFiles = @()
-        foreach ($enum in $outPort.GetEnumerator()) {
+        foreach ($enum in $OutPort.GetEnumerator()) {
             $filePath = $enum.Value
             if (Test-Path $filePath) {
                 $fileContent = Get-Content -Path $filePath -Raw
@@ -247,16 +247,16 @@ function Invoke-XmlCalabash {
 function Invoke-MorganaXProc {
     [CmdletBinding()]
     param(
-        [array]$paths,                
+        [array]$Paths,                
         $InputObject,
         [Parameter(Mandatory = $true)] 
-        $pipeline,        
-        [hashtable]$options,
-        [hashtable]$inPort,
-        [hashtable]$outPort,
-        [string]$catalog,
-        [array]$passthrough,
-        [array]$passthroughJava,
+        $Pipeline,        
+        [hashtable]$Options,
+        [hashtable]$InPort,
+        [hashtable]$OutPort,
+        [string]$Catalog,
+        [array]$Passthrough,
+        [array]$PassthroughJava,
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
         [string]$Configuration,
@@ -265,7 +265,7 @@ function Invoke-MorganaXProc {
     #$processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8.2")
         
     # look for the MorganaXProc path
-    $processorPath = $paths | Where-Object {
+    $processorPath = $Paths | Where-Object {
         $_ -like "*MorganaXProc-IIIse*"
     } | Select-Object -First 1
     if ( -not $processorPath) {
@@ -278,7 +278,7 @@ function Invoke-MorganaXProc {
     }
     $cp = $morganaJar
 
-    $cp += Get-PXClassPath -paths $paths
+    $cp += Get-PXClassPath -Paths $Paths
     
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
     Get-ChildItem "$processorPath\MorganaXProc-IIIse_lib" -Filter *.jar |
@@ -291,11 +291,11 @@ function Invoke-MorganaXProc {
     if ($Configuration) {
         $xcArgs += @("-config=`"$Configuration`"")
     }
-    $xcArgs += @($pipeline)
+    $xcArgs += @($Pipeline)
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?
-    if ($inPort) {
+    if ($InPort) {
         $xcInput = @()
-        foreach ($enum in $inPort.GetEnumerator()) {
+        foreach ($enum in $InPort.GetEnumerator()) {
             $portName = $enum.Key
             $portVal = $enum.Value
             if ($portVal -is [array]) {
@@ -309,26 +309,26 @@ function Invoke-MorganaXProc {
         }
         $xcArgs += $xcInput
     }
-    if ($outPort) {
+    if ($OutPort) {
         $xcOutput = @()
-        foreach ($enum in $outPort.GetEnumerator()) {
+        foreach ($enum in $OutPort.GetEnumerator()) {
             $xcOutput += ("-output:$($enum.Key)=`"$($enum.Value)`"")                        
         }
         $xcArgs += $xcOutput
     }
 
-    if ($catalog) {
-        $xcArgs += @("-catalogs=`"$catalog`"")
+    if ($Catalog) {
+        $xcArgs += @("-catalogs=`"$Catalog`"")
     }
 
 
-    if ($passthrough) {
-        $xcArgs += $passthrough
+    if ($Passthrough) {
+        $xcArgs += $Passthrough
     }
         
-    if ($options) {
+    if ($Options) {
         $xcOptions = @()
-        foreach ($enum in $options.GetEnumerator()) {
+        foreach ($enum in $Options.GetEnumerator()) {
             $xcOptions += ("-option:$($enum.Key)=$($enum.Value)")
         }
         $xcArgs += $xcOptions
@@ -370,10 +370,10 @@ function Invoke-MorganaXProc {
     }
 
     if ($MergeOutput) {
-        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
+        $output = & java -cp "$cp" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
     }
     else {
-        $output = & java -cp "$cp" @passthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
+        $output = & java -cp "$cp" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
     }
     $stdoutResult = if ($output -is [array]) {
         $output -join "`n" | Get-MultiXmlDocuments
@@ -382,9 +382,9 @@ function Invoke-MorganaXProc {
         $output | Get-MultiXmlDocuments
     }
 
-    if ($CollectOutput -and $outPort -and $outPort.Count -gt 0) {
+    if ($CollectOutput -and $OutPort -and $OutPort.Count -gt 0) {
         $collectedFromFiles = @()
-        foreach ($enum in $outPort.GetEnumerator()) {
+        foreach ($enum in $OutPort.GetEnumerator()) {
             $filePath = $enum.Value
             if (Test-Path $filePath) {
                 $fileContent = Get-Content -Path $filePath -Raw
@@ -403,18 +403,18 @@ function Invoke-MorganaXProc {
 function Get-PXClassPath {
     param(
         [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
-        [array]$paths,
-        [switch]$shortenClassPath
+        [array]$Paths,
+        [switch]$ShortenClassPath
     ) 
     $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    #Write-Host $paths
+    #Write-Host $Paths
     $cp = @()
-    if ($shortenClassPath) {
-        $cp = "$($paths -join $cpDelimiter)"
+    if ($ShortenClassPath) {
+        $cp = "$($Paths -join $cpDelimiter)"
         return $cp
     }
     else {
-        $paths | ForEach-Object {
+        $Paths | ForEach-Object {
             Get-ChildItem "$_" -Filter *.jar |
                 ForEach-Object {
                     Write-Verbose "Adding $($_.FullName) to classpath"

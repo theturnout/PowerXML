@@ -120,12 +120,12 @@ function Merge-AdditionalPackages {
 <#
 .SYNOPSIS
   Copies software composition from a CycloneDX SBOM XML file to a local repository.
-.PARAMETER sbomPath
+.PARAMETER SbomPath
   Path to the CycloneDX SBOM XML file. When omitted (and AdditionalPackages is
   supplied) an interstitial SBOM is created in memory.
-.PARAMETER targetComposition
+.PARAMETER TargetComposition
   The specific composition to copy from the SBOM.
-.PARAMETER localRepository
+.PARAMETER LocalRepository
   The local repository path where the dependencies will be copied.
 .PARAMETER GetLatest
   When specified, resolves the latest version for supported package types (codeberg, github)
@@ -142,20 +142,20 @@ function Merge-AdditionalPackages {
 function Copy-SoftwareComposition {
   [CmdletBinding()]
   param(
-    [string] $sbomPath,
-    [string] $targetComposition,
-    [string] $localRepository = (Get-LocalRepositoryPath),
+    [string] $SbomPath,
+    [string] $TargetComposition,
+    [string] $LocalRepository = (Get-LocalRepositoryPath),
     [switch] $GetLatest,
     [string[]] $AdditionalPackages,
     [switch] $ValidateSbom
   )
 
   # Load existing SBOM or create an interstitial one from AdditionalPackages
-  if ($sbomPath -and (Test-Path $sbomPath)) {
-    $file = Resolve-Path $sbomPath
+  if ($SbomPath -and (Test-Path $SbomPath)) {
+    $file = Resolve-Path $SbomPath
     [xml]$xmlContent = Get-Content -Path $file
     if (-not (Test-SBOM $xmlContent -ValidateSchema:$ValidateSbom)) {
-      Write-Host "Fatal: Invalid SBOM file $sbomPath" -ForegroundColor Red
+      Write-Host "Fatal: Invalid SBOM file $SbomPath" -ForegroundColor Red
       exit 1
     }
   }
@@ -176,25 +176,25 @@ function Copy-SoftwareComposition {
   }
   else {
     # Preserve existing error behaviour: Resolve-Path throws on missing file
-    Resolve-Path $sbomPath -ErrorAction Stop
+    Resolve-Path $SbomPath -ErrorAction Stop
     return
   }
 
   $bom = $xmlContent.bom
 
-  if (-not $targetComposition) {
+  if (-not $TargetComposition) {
     # Pick the first composition in the SBOM
     $allCompositions = @($bom.compositions.composition)
     if ($allCompositions.Count -eq 0 -or $null -eq $allCompositions[0]) {
-      throw "No compositions found in SBOM '$sbomPath'."
+      throw "No compositions found in SBOM '$SbomPath'."
     }
     $composition = $allCompositions[0]
     Write-Verbose "No targetComposition specified; using first composition '$($composition."bom-ref")'."
   }
   else {
-    $composition = $bom.compositions.composition | Where-Object { $_."bom-ref" -eq $targetComposition }
+    $composition = $bom.compositions.composition | Where-Object { $_."bom-ref" -eq $TargetComposition }
     if (!$composition) {
-      throw "Target composition '$targetComposition' not found in SBOM '$sbomPath'."
+      throw "Target composition '$TargetComposition' not found in SBOM '$SbomPath'."
     }
   }
 
@@ -249,9 +249,9 @@ function Copy-SoftwareComposition {
       }
     }
 
-    $purl = ConvertFrom-PkgUri($purlString)
+    $Purl = ConvertFrom-PkgUri($purlString)
     # Download the package
-    $downloadResult = Get-PackageFromPurl -purl $purl -localRepository $localRepository
+    $downloadResult = Get-PackageFromPurl -Purl $Purl -LocalRepository $LocalRepository
 
     # Extract SBOM-level metadata for post-processing
     $zipRoot = ($currentComposition.properties.property | Where-Object { $_.name -eq "rootZip" }).InnerText
@@ -289,9 +289,9 @@ function Copy-SoftwareComposition {
     if ($mainPath -and (Test-Path $mainPath -PathType Leaf)) {
       $installParams = @{
         DownloadedPath  = $mainPath
-        Name            = $purl.Name
-        Version         = $purl.Version
-        LocalRepository = $localRepository
+        Name            = $Purl.Name
+        Version         = $Purl.Version
+        LocalRepository = $LocalRepository
       }
       if ($zipRoot) { $installParams.ZipRoot = $zipRoot }
       if ($verifiableHashes.Count -gt 0) {
@@ -308,7 +308,7 @@ function Copy-SoftwareComposition {
 <#
 .SYNOPSIS
 Downloads a package and its dependencies based on the provided Package URL (PURL)
-.PARAMETER purl
+.PARAMETER Purl
 The Package URL object representing the package to download.
 .RETURNS
 A object with the Purl and local path of the downloaded package.
@@ -316,17 +316,17 @@ A object with the Purl and local path of the downloaded package.
 function Get-PackageFromPurl {  
   param(
     [Parameter(Mandatory = $true)]
-    $purl,
-    [string] $localRepository = (Get-LocalRepositoryPath)
+    $Purl,
+    [string] $LocalRepository = (Get-LocalRepositoryPath)
   )
 
   $paths = @()
       
-  if ($purl.Type -eq "maven") {
-    $groupId = $purl.Namespace
-    $artifactId = $purl.Name
+  if ($Purl.Type -eq "maven") {
+    $groupId = $Purl.Namespace
+    $artifactId = $Purl.Name
     # version may not always exist
-    $version = $purl.Version
+    $version = $Purl.Version
     # TODO doesn't fix issues with overall resolution of saxon-ee deps
     if ($groupId -eq "com.saxonica") {
       $repoUrl = "https://maven.saxonica.com/maven"
@@ -335,32 +335,32 @@ function Get-PackageFromPurl {
       $repoUrl = "https://repo1.maven.org/maven2"
     }
     
-    $paths = @("$localRepository\$artifactId-$version")
+    $paths = @("$LocalRepository\$artifactId-$version")
     
     # Main Execution
     $rootPom = Get-MavenArtifact -groupId $groupId `
       -artifactId $artifactId `
       -version $version `
       -repoUrl $repoUrl `
-      -downloadPath $localRepository
+      -downloadPath $LocalRepository
 
     if ($rootPom) {
       $currentPaths = Resolve-Dependencies -pomFile $rootPom `
         -repoUrl $MAVEN_CENTRAL `
-        -downloadPath $localRepository
+        -downloadPath $LocalRepository
       if ($currentPaths) {
         $paths += $currentPaths
       }
     }
-    Write-Verbose "Maven dependencies downloaded to: $localRepository"
+    Write-Verbose "Maven dependencies downloaded to: $LocalRepository"
   }
-  elseif ($purl.Type -eq "sourceforge") {
-    $name = $purl.Name
-    $version = $purl.Version
-    $filePath = $purl.QualifiersParsed["filename"]
+  elseif ($Purl.Type -eq "sourceforge") {
+    $name = $Purl.Name
+    $version = $Purl.Version
+    $filePath = $Purl.QualifiersParsed["filename"]
     $downloadUrl = "https://sourceforge.net/projects/$name/files/$filePath"
-    $zipPath = Join-Path $localRepository "$name-$version.zip"
-    $installedPath = Join-Path $localRepository "$name-$version"
+    $zipPath = Join-Path $LocalRepository "$name-$version.zip"
+    $installedPath = Join-Path $LocalRepository "$name-$version"
 
     # Already installed (by a previous Install-Package call)
     if (Test-Path $installedPath -PathType Container) {
@@ -379,32 +379,32 @@ function Get-PackageFromPurl {
       $paths = @($zipPath)
     }
   }
-  elseif ($purl.Type -eq "github") {
-    $paths += Copy-GitHubRelease -RepoOwner $purl.Namespace `
-      -RepoName $purl.Name `
-      -Version $purl.Version `
-      -LibPath $localRepository
+  elseif ($Purl.Type -eq "github") {
+    $paths += Copy-GitHubRelease -RepoOwner $Purl.Namespace `
+      -RepoName $Purl.Name `
+      -Version $Purl.Version `
+      -LibPath $LocalRepository
   }
-  elseif ($purl.Type -eq "codeberg") {
-    if ($purl.QualifiersParsed["filename"]) {
-      $fileName = $purl.QualifiersParsed["filename"]
+  elseif ($Purl.Type -eq "codeberg") {
+    if ($Purl.QualifiersParsed["filename"]) {
+      $fileName = $Purl.QualifiersParsed["filename"]
     }
     
-    $paths += Copy-GitHubRelease -RepoOwner $purl.Namespace `
-      -RepoName $purl.Name `
-      -Version $purl.Version `
-      -LibPath $localRepository `
+    $paths += Copy-GitHubRelease -RepoOwner $Purl.Namespace `
+      -RepoName $Purl.Name `
+      -Version $Purl.Version `
+      -LibPath $LocalRepository `
       -ApiPath "https://codeberg.org/api/v1" `
       -Assets @($fileName)
   }
-  elseif ($purl.Type -eq "nuget") {
-    $name = $purl.Name
-    $version = $purl.Version
+  elseif ($Purl.Type -eq "nuget") {
+    $name = $Purl.Name
+    $version = $Purl.Version
     $idLower = $name.ToLowerInvariant()
     $nupkgFile = "$idLower.$version.nupkg"
     $downloadUrl = "https://api.nuget.org/v3-flatcontainer/$idLower/$version/$nupkgFile"
-    $nupkgPath = Join-Path $localRepository "$name-$version.nupkg"
-    $installedPath = Join-Path $localRepository "$name-$version"
+    $nupkgPath = Join-Path $LocalRepository "$name-$version.nupkg"
+    $installedPath = Join-Path $LocalRepository "$name-$version"
 
     # Already installed (by a previous Install-Package call)
     if (Test-Path $installedPath -PathType Container) {
@@ -424,7 +424,7 @@ function Get-PackageFromPurl {
     }
   }
   else {
-    Write-Host "$($purl.Type) not supported yet" -ForegroundColor Yellow				
+    Write-Host "$($Purl.Type) not supported yet" -ForegroundColor Yellow				
   }
   return $paths
 }
