@@ -431,6 +431,18 @@ function Get-PackageFromPurl {
 
 function Get-LocalRepositoryPath {
   $path = if ($env:polyglotpm) { $env:polyglotpm } else { "$HOME/.polyglotpm" }
+  # Ensure the repository exists so first-time users do not hit download
+  # or extraction errors on a missing directory
+  if (-not (Test-Path $path)) {
+    try {
+      New-Item -ItemType Directory -Path $path -Force -ErrorAction Stop | Out-Null
+      Write-Verbose "Created local repository at '$path'."
+    }
+    catch {
+      Write-Error "Failed to create local repository at '$path': $($_.Exception.Message)"
+      return $path
+    }
+  }
   # Resolve PSDrive paths (e.g. TestDrive:\) to real filesystem paths
   # so non-PowerShell consumers like Java can use them
   if (Test-Path $path) {

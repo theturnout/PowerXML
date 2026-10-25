@@ -864,3 +864,49 @@ Describe 'Resolve-LatestVersion NuGet' {
 }
 
 # Add similar blocks for other scripts/modules as needed
+
+Describe 'Get-LocalRepositoryPath' {
+    BeforeAll {
+        # Preserve the repository location configured by the file-level BeforeAll
+        $script:OriginalPolyglotpm = $env:polyglotpm
+    }
+
+    AfterAll {
+        $env:polyglotpm = $script:OriginalPolyglotpm
+    }
+
+    It 'Should create the repository directory when it does not exist' {
+        $env:polyglotpm = Join-Path $TestDrive "repo-missing"
+        Test-Path $env:polyglotpm | Should -Be $false
+
+        $result = Get-LocalRepositoryPath
+
+        Test-Path $env:polyglotpm -PathType Container | Should -Be $true
+        $result | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Should resolve PSDrive paths to real filesystem paths' {
+        $env:polyglotpm = Join-Path $TestDrive "repo-resolve"
+
+        $result = Get-LocalRepositoryPath
+
+        $result | Should -Not -BeLike "TestDrive*"
+    }
+
+    It 'Should create the default repository when no environment variable is set' {
+        $env:polyglotpm = $null
+        $defaultPath = Join-Path $HOME ".polyglotpm"
+
+        $result = Get-LocalRepositoryPath
+
+        $result | Should -Not -BeNullOrEmpty
+        Test-Path $defaultPath -PathType Container | Should -Be $true
+    }
+
+    It 'Should be idempotent when the repository already exists' {
+        $env:polyglotpm = Join-Path $TestDrive "repo-exists"
+        New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
+
+        { Get-LocalRepositoryPath } | Should -Not -Throw
+    }
+}
