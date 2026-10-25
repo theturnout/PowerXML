@@ -94,6 +94,49 @@ function Resolve-XmlInput {
 }
 <#
 .SYNOPSIS
+Detects the primary port of an XProc pipeline.
+.DESCRIPTION
+Returns the name of the pipeline's primary input or output port by inspecting the top-level p:declare-step declaration. Preference order: the port marked primary="true", the only declared port when there is exactly one, and finally the conventional fallback ("source" for inputs, "result" for outputs). Unparseable or non-XProc documents also fall back to the convention.
+.PARAMETER PipelinePath
+Path to the XProc pipeline document.
+.PARAMETER Direction
+Whether to inspect input or output ports.
+.OUTPUTS
+The port name as a string.
+#>
+function Get-PrimaryPort {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PipelinePath,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("Input", "Output")]
+        [string]$Direction
+    )
+    $fallback = if ($Direction -eq "Input") { "source" } else { "result" }
+    try {
+        [xml]$pipelineXml = Get-Content -Path $PipelinePath -Raw -ErrorAction Stop
+    }
+    catch {
+        return $fallback
+    }
+    $namespace = @{ p = "http://www.w3.org/ns/xproc" }
+    $ports = @(Select-Xml -Xml $pipelineXml -XPath "/p:declare-step/p:$($Direction.ToLower())" -Namespace $namespace)
+    if ($ports.Count -eq 0) {
+        return $fallback
+    }
+    foreach ($port in $ports) {
+        if ($port.Node.GetAttribute("primary") -in @("true", "1")) {
+            return $port.Node.GetAttribute("port")
+        }
+    }
+    if ($ports.Count -eq 1) {
+        return $ports[0].Node.GetAttribute("port")
+    }
+    return $fallback
+}
+<#
+.SYNOPSIS
 Transforms inputs using XML technologies
 .PARAMETER Processing
 The kind of processing to run. Default xproc.
@@ -112,9 +155,9 @@ A hashtable that groups polyglot package manager settings for XProc processing:
   ValidateSbom        - When $true, runs XSD schema validation against the CycloneDX bom-1.5.xsd
                         schema when loading the SBOM. Throws on validation errors.
 .PARAMETER InPort
-A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}
+A hashtable of ports bound to inputs, e.g. @{input1='file1.xml', input2='file2.xml}. A single value (a path, XML string or object, or an array of documents for sequences) binds to the pipeline's primary input port.
 .PARAMETER OutPort
-A hashtable of ports bound to outputs, e.g. @{input1='file1.xml', input2='file2.xml}
+A hashtable of ports bound to outputs, e.g. @{result='output.xml'}. A single value (a path) binds to the pipeline's primary output port.
 .PARAMETER Catalog
 The path to an XML catalog file to use for resolving XML resources.
 .PARAMETER Passthrough
@@ -140,8 +183,8 @@ function Transform-Xml {
         $Pipeline,        
         [Alias("parameters")]
         [hashtable]$Options,
-        [hashtable]$InPort,
-        [hashtable]$OutPort,
+        $InPort,
+        $OutPort,
         [string]$Catalog,
         [array]$Passthrough,
         [array]$PassthroughJava,
@@ -152,6 +195,27 @@ function Transform-Xml {
     )
     
     $pipelinePath = Resolve-XmlInput -InputObject $Pipeline -Extension "xpl"
+    
+    # Normalize single values (or arrays of documents) into default-port bindings.
+    # Named hashtables are passed through unchanged.
+    if ($null -ne $InPort -and $InPort -isnot [hashtable] -and $InPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($InPort).Count -gt 0) {
+        $portName = if ($Processing -eq "xproc") {
+            Get-PrimaryPort -PipelinePath $pipelinePath -Direction Input
+        }
+        else {
+            "source"
+        }
+        $InPort = @{ $portName = $InPort }
+    }
+    if ($null -ne $OutPort -and $OutPort -isnot [hashtable] -and $OutPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($OutPort).Count -gt 0) {
+        $portName = if ($Processing -eq "xproc") {
+            Get-PrimaryPort -PipelinePath $pipelinePath -Direction Output
+        }
+        else {
+            "result"
+        }
+        $OutPort = @{ $portName = $OutPort }
+    }
     
     $inPortProcessed = $null
     if ($InPort) {

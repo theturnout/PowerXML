@@ -199,6 +199,97 @@ Describe 'Transform-Xml' {
             $xmlDocs.Count | Should -BeGreaterOrEqual 1
         }
 
+        It "$($_.Name) - Should bind single InPort value to the primary port" {
+            $inputFileName = "$TestDrive/defport_input.xml"
+            $outputFileName = "$TestDrive/defport_output.xml"
+            [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>DefaultPort</message></root>"
+            $xmlInput.Save($inputFileName)
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort $inputFileName -OutPort @{ result = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true
+            [xml]$xmlOutput = Get-Content $outputFileName -Raw
+            $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
+        }
+
+        It "$($_.Name) - Should bind single OutPort value to the primary port" {
+            $outputFileName = "$TestDrive/defport_output2.xml"
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -OutPort $outputFileName
+            Test-Path $outputFileName | Should -Be $true
+            [xml]$xmlContent = Get-Content $outputFileName -Raw
+            $xmlContent.content | Should -Be "Hello, World!"
+        }
+
+        It "$($_.Name) - Should accept an XML object as single InPort value" {
+            $outputFileName = "$TestDrive/defport_output3.xml"
+            [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>ObjDefaultPort</message></root>"
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort $xmlInput -OutPort @{ result = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true
+            [xml]$xmlOutput = Get-Content $outputFileName -Raw
+            $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
+        }
+
+        It "$($_.Name) - Should bind an array of documents to the primary port" {
+            $inputFile1 = "$TestDrive/defport_input1.xml"
+            $inputFile2 = "$TestDrive/defport_input2.xml"
+            [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>DefDoc1</message></root>"
+            [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>DefDoc2</message></root>"
+            $xmlInput1.Save($inputFile1)
+            $xmlInput2.Save($inputFile2)
+            $outputFileName = "$TestDrive/defport_seq_output.xml"
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @($inputFile1, $inputFile2) -OutPort @{ result = $outputFileName }
+            $xmlOutput = Get-Content $outputFileName -Raw
+            $xmlOutput | Should -BeLike "*DefDoc1*"
+            $xmlOutput | Should -BeLike "*DefDoc2*"
+        }
+
+        It "$($_.Name) - Should bind to the primary port when multiple ports are declared" {
+            $pipelineXml = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<p:declare-step xmlns:p="http://www.w3.org/ns/xproc" name="pipeline" version="3.0">
+    <p:input port="doc" primary="false" sequence="true">
+        <p:empty/>
+    </p:input>
+    <p:input port="source" primary="true"/>
+    <p:output port="result" primary="true" />
+    <p:identity />
+</p:declare-step>
+'@
+            $pipelineFile = "$TestDrive/defport_multi.xpl"
+            Set-Content -Path $pipelineFile -Value $pipelineXml
+            $inputFileName = "$TestDrive/defport_multi_input.xml"
+            $outputFileName = "$TestDrive/defport_multi_output.xml"
+            [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>MultiPort</message></root>"
+            $xmlInput.Save($inputFileName)
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFile -InPort $inputFileName -OutPort @{ result = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true
+            [xml]$xmlOutput = Get-Content $outputFileName -Raw
+            $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
+        }
+
+        It "$($_.Name) - Should bind to the only declared port when none is marked primary" {
+            $pipelineXml = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<p:declare-step xmlns:p="http://www.w3.org/ns/xproc" name="pipeline" version="3.0">
+    <p:input port="doc" primary="false"/>
+    <p:output port="result" primary="true" />
+    <p:identity>
+        <p:with-input>
+            <p:pipe step="pipeline" port="doc"/>
+        </p:with-input>
+    </p:identity>
+</p:declare-step>
+'@
+            $pipelineFile = "$TestDrive/defport_single.xpl"
+            Set-Content -Path $pipelineFile -Value $pipelineXml
+            $inputFileName = "$TestDrive/defport_single_input.xml"
+            $outputFileName = "$TestDrive/defport_single_output.xml"
+            [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>SinglePort</message></root>"
+            $xmlInput.Save($inputFileName)
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFile -InPort $inputFileName -OutPort @{ result = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true
+            [xml]$xmlOutput = Get-Content $outputFileName -Raw
+            $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
+        }
+
         It "$($_.Name) - Should process XPL using invisible XML with the processor in targetComposition" {
             $result = Transform-Xml -PackageResolution @{TargetComposition = "oscal" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/ixml.xpl"
             $result | Should -BeLike "*March*"

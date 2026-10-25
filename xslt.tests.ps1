@@ -124,6 +124,28 @@ Describe 'Transform-Xml XSLT Processing' {
             
             $result | Should -BeLike "*<data>String XSL Test</data>*"
         }
+        
+        It "$($_.Name) - Should accept single values for InPort and OutPort" {
+            if ($_.Name -eq "msxml" -and (-not $IsWindows -and ($PSVersionTable.PSEdition -eq 'Core'))) {
+                Set-ItResult -Skipped -Because "MSXML is only available on Windows"
+                return
+            }
+            $inputFile = "$TestDrive/xslt_defport_input.xml"
+            $outputFile = "$TestDrive/xslt_defport_output.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><data>DefaultPort XSLT</data></root>"
+            $xmlInput.Save($inputFile)
+            
+            Transform-Xml `
+                -Processing "xslt" `
+                -Processor $_.Name `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort $inputFile `
+                -OutPort $outputFile
+            
+            Test-Path $outputFile | Should -Be $true
+            $content = Get-Content $outputFile -Raw
+            $content | Should -BeLike "*<data>DefaultPort XSLT</data>*"
+        }
     }
     
     Context "AltovaXML processor (XSLT 2.0)" {

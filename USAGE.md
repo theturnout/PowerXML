@@ -62,6 +62,20 @@ Transform-Xml
 
 ---
 
+### Bind Single Values to the Default Port
+
+When the pipeline has a primary input or output port, a single value can be passed directly without naming the port:
+
+```powershell
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Pipeline "./test_data/xmlpassthru.xpl" 
+	-InPort "./input.xml" 
+	-OutPort "./output.xml"
+```
+
+The primary port is detected from the pipeline (the `p:input`/`p:output` marked `primary="true"`, or the only declared port), falling back to the conventional `source`/`result` names. Arrays are treated as document sequences on the primary port. For XSLT processing, single values bind to the conventional `source`/`result` ports.
+
 ### Pass Input via Object
 
 ```powershell

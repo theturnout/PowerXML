@@ -98,8 +98,8 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object) |
 | `-Processing` | string | Processing type: `xproc` (default) or `xslt` |
 | `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc`, `phoenixml` |
-| `-InPort` | hashtable | Input port bindings: `@{ portName = "./test_data/order.xml" }` |
-| `-OutPort` | hashtable | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }` |
+| `-InPort` | hashtable/string/xml | Input port bindings: `@{ portName = "./test_data/order.xml" }`; a single value binds to the pipeline's primary input port |
+| `-OutPort` | hashtable/string | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }`; a single value binds to the pipeline's primary output port |
 | `-Options` | hashtable | Pipeline options/parameters |
 | `-TargetComposition` | string | SBOM composition for dependency resolution |
 | `-Namespace` | hashtable | Namespace bindings: `@{ prefix = "uri" }` |
