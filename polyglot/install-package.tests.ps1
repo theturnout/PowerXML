@@ -279,4 +279,101 @@ Describe 'Install-Package' {
             }
         }
     }
+
+    Context 'Archive root auto-detection' {
+        BeforeEach {
+            # Real wrapper-style archive: every entry lives under mywrapper-9.9.9/
+            $wrapperBase = Join-Path $TestDrive "wrapsrc-$(New-Guid)"
+            $wrapperDir = Join-Path $wrapperBase "mywrapper-9.9.9"
+            New-Item -ItemType Directory -Path $wrapperDir -Force | Out-Null
+            Set-Content -Path (Join-Path $wrapperDir "lib.jar") -Value "jar content" -NoNewline
+            $script:wrapperZip = Join-Path $script:LocalRepo "mylib-9.9.9.zip"
+            Compress-Archive -Path (Join-Path $wrapperBase "*") -DestinationPath $script:wrapperZip -Force
+
+            # Real flat archive: entries at the archive root (no wrapper)
+            $script:flatBase = Join-Path $TestDrive "flatsrc-$(New-Guid)"
+            New-Item -ItemType Directory -Path $script:flatBase -Force | Out-Null
+            Set-Content -Path (Join-Path $script:flatBase "root-file.txt") -Value "root" -NoNewline
+            $flatSub = Join-Path $script:flatBase "sub"
+            New-Item -ItemType Directory -Path $flatSub -Force | Out-Null
+            Set-Content -Path (Join-Path $flatSub "nested-file.txt") -Value "nested" -NoNewline
+            $script:flatZip = Join-Path $script:LocalRepo "mylib-8.8.8.zip"
+            Compress-Archive -Path (Join-Path $script:flatBase "*") -DestinationPath $script:flatZip -Force
+        }
+
+        It 'Should auto-detect and rename a wrapper directory without ZipRoot' {
+            $result = Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mylib" -Version "9.9.9" `
+                -LocalRepository $script:LocalRepo
+
+            $expected = Join-Path $script:LocalRepo "mylib-9.9.9"
+            $result | Should -Be $expected
+            Test-Path $expected -PathType Container | Should -Be $true
+            Test-Path (Join-Path $expected "lib.jar") | Should -Be $true
+            Test-Path (Join-Path $script:LocalRepo "mywrapper-9.9.9") | Should -Be $false
+        }
+
+        It 'Should extract a no-wrapper archive directly into the canonical directory' {
+            $result = Install-Package -DownloadedPath $script:flatZip `
+                -Name "mylib" -Version "8.8.8" `
+                -LocalRepository $script:LocalRepo
+
+            $expected = Join-Path $script:LocalRepo "mylib-8.8.8"
+            $result | Should -Be $expected
+            Test-Path (Join-Path $expected "root-file.txt") | Should -Be $true
+            Test-Path (Join-Path $expected "sub/nested-file.txt") | Should -Be $true
+            # Nothing sprayed into the repository root
+            Test-Path (Join-Path $script:LocalRepo "root-file.txt") | Should -Be $false
+        }
+
+        It 'Should warn and use the detected root when ZipRoot disagrees' {
+            Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mylib" -Version "9.9.9" `
+                -ZipRoot "wrong-root-9.9.9" `
+                -LocalRepository $script:LocalRepo `
+                -WarningAction SilentlyContinue -WarningVariable warnings
+
+            $warnings | Should -Not -BeNullOrEmpty
+            ($warnings | Out-String) | Should -BeLike "*wrong-root-9.9.9*"
+            Test-Path (Join-Path $script:LocalRepo "mylib-9.9.9") -PathType Container | Should -Be $true
+        }
+
+        It 'Should warn when ZipRoot is set but the archive has no wrapper' {
+            Install-Package -DownloadedPath $script:flatZip `
+                -Name "mylib" -Version "8.8.8" `
+                -ZipRoot "some-wrapper" `
+                -LocalRepository $script:LocalRepo `
+                -WarningAction SilentlyContinue -WarningVariable warnings
+
+            $warnings | Should -Not -BeNullOrEmpty
+            Test-Path (Join-Path $script:LocalRepo "mylib-8.8.8") -PathType Container | Should -Be $true
+        }
+
+        It 'Should perform a case-only rename to the canonical name' {
+            $caseBase = Join-Path $TestDrive "casesrc-$(New-Guid)"
+            $caseDir = Join-Path $caseBase "MYLIB-7.7.7"
+            New-Item -ItemType Directory -Path $caseDir -Force | Out-Null
+            Set-Content -Path (Join-Path $caseDir "inner.txt") -Value "x" -NoNewline
+            $caseZip = Join-Path $script:LocalRepo "mylib-7.7.7.zip"
+            Compress-Archive -Path (Join-Path $caseBase "*") -DestinationPath $caseZip -Force
+
+            Install-Package -DownloadedPath $caseZip `
+                -Name "mylib" -Version "7.7.7" `
+                -LocalRepository $script:LocalRepo
+
+            (Get-ChildItem $script:LocalRepo -Directory |
+                Where-Object { $_.Name -ceq "mylib-7.7.7" }).Name | Should -Be "mylib-7.7.7"
+        }
+
+        It 'Should handle nupkg archives the same way' {
+            $nupkg = Join-Path $script:LocalRepo "mylib-6.6.6.nupkg"
+            Compress-Archive -Path (Join-Path $script:flatBase "*") -DestinationPath $nupkg -Force
+
+            Install-Package -DownloadedPath $nupkg `
+                -Name "mylib" -Version "6.6.6" `
+                -LocalRepository $script:LocalRepo
+
+            Test-Path (Join-Path $script:LocalRepo "mylib-6.6.6/root-file.txt") | Should -Be $true
+        }
+    }
 }
