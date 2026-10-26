@@ -107,6 +107,16 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-Passthrough` | array | Arguments passed directly to the processor |
 | `-PassthroughJava` | array | Arguments passed to the JVM |
 
+### Namespace Registry
+
+Session-scoped namespace declarations, merged into every `Transform-Xml` XProc invocation (explicit `-Namespace` entries take precedence):
+
+```powershell
+Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+Get-Namespace
+Unregister-Namespace -Prefix "pre"
+```
+
 ## Dependency Management
 
 PowerXML uses CycloneDX SBOM format (`sbom.xml`) to declare and manage Java dependencies. Dependencies are automatically downloaded from:

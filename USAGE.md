@@ -99,6 +99,18 @@ Transform-Xml
 	-Options @{ 'pre:opt' = 42 }
 ```
 
+### Register Namespaces for the Session
+
+Namespace prefixes registered for the session are merged into every XProc invocation; explicit `-Namespace` entries take precedence over the registry:
+
+```powershell
+Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Pipeline "./test_data/optionalHelloWorld.xpl"
+```
+
 ### Capture Output as a .NET XML Object
 
 When a pipeline writes XML to stdout, you can cast or assign the result directly to `[xml]` and navigate the DOM with dot notation:

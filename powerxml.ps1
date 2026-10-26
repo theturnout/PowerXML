@@ -135,6 +135,90 @@ function Get-PrimaryPort {
     }
     return $fallback
 }
+# Session-scoped namespace registry, populated by Register-Namespace and merged
+# into Transform-Xml invocations (explicit -Namespace entries take precedence)
+$script:NamespaceRegistry = @{}
+
+<#
+.SYNOPSIS
+Registers a namespace prefix for the session.
+.DESCRIPTION
+Adds a prefix-to-URI mapping to the session-scoped registry. Transform-Xml merges the registry with its -Namespace parameter (explicit parameter entries take precedence) when invoking XProc processors.
+.PARAMETER Prefix
+The namespace prefix, e.g. "pre" for use with namespaced options like "pre:opt".
+.PARAMETER Uri
+The namespace URI the prefix maps to.
+#>
+function Register-Namespace {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern("^[A-Za-z_][\w.-]*$")]
+        [string]$Prefix,
+        [Parameter(Mandatory = $true)]
+        [string]$Uri
+    )
+    if ($script:NamespaceRegistry.ContainsKey($Prefix) -and $script:NamespaceRegistry[$Prefix] -ne $Uri) {
+        Write-Warning "Prefix '$Prefix' was registered to '$($script:NamespaceRegistry[$Prefix])'; overwriting with '$Uri'."
+    }
+    $script:NamespaceRegistry[$Prefix] = $Uri
+}
+
+<#
+.SYNOPSIS
+Removes namespace prefixes from the session registry.
+.DESCRIPTION
+Unregisters one or more prefixes. Unknown prefixes are ignored (a verbose message is written). Accepts pipeline input from Get-Namespace.
+.PARAMETER Prefix
+The namespace prefix(es) to remove.
+#>
+function Unregister-Namespace {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Prefix
+    )
+    process {
+        # NOTE: the loop variable must not differ from $Prefix by case alone —
+        # PowerShell variables are case-insensitive, so a [string[]]-typed
+        # parameter would coerce each element back into an array on assignment
+        foreach ($prefixName in $Prefix) {
+            if ($script:NamespaceRegistry.ContainsKey($prefixName)) {
+                $script:NamespaceRegistry.Remove($prefixName)
+            }
+            else {
+                Write-Verbose "Prefix '$prefixName' was not registered."
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Gets the namespace prefixes registered for the session.
+.PARAMETER Prefix
+Optional prefix filter. When omitted, all registered prefixes are returned.
+.OUTPUTS
+One object per registered prefix with Prefix and Uri properties.
+#>
+function Get-Namespace {
+    [CmdletBinding()]
+    param(
+        [string]$Prefix
+    )
+    $keys = if ($Prefix) {
+        @($script:NamespaceRegistry.Keys | Where-Object { $_ -eq $Prefix })
+    }
+    else {
+        @($script:NamespaceRegistry.Keys)
+    }
+    foreach ($key in ($keys | Sort-Object)) {
+        [PSCustomObject]@{
+            Prefix = $key
+            Uri    = $script:NamespaceRegistry[$key]
+        }
+    }
+}
 <#
 .SYNOPSIS
 Transforms inputs using XML technologies
@@ -167,7 +251,7 @@ An array of parameters passed directly to the Java JVM.
 .PARAMETER MergeOutput
 Merges the STDOUT and STDERR of the processor into a single stream. Default is true.
 .PARAMETER Namespace
-A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g.
+A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g. @{ pre = "http://example.com/pre" }. Merged with the session-scoped registry (see Register-Namespace); explicit entries here take precedence.
 #>
 function Transform-Xml {
     [CmdletBinding()]
@@ -215,6 +299,22 @@ function Transform-Xml {
             "result"
         }
         $OutPort = @{ $portName = $OutPort }
+    }
+
+    # Merge the session-scoped namespace registry (Register-Namespace) with the
+    # -Namespace parameter; explicit parameter entries take precedence
+    $registeredNamespaces = @(Get-Namespace)
+    $effectiveNamespace = $null
+    if ($Namespace -or $registeredNamespaces.Count -gt 0) {
+        $effectiveNamespace = @{}
+        foreach ($registered in $registeredNamespaces) {
+            $effectiveNamespace[$registered.Prefix] = $registered.Uri
+        }
+        if ($Namespace) {
+            foreach ($key in $Namespace.Keys) {
+                $effectiveNamespace[$key] = $Namespace[$key]
+            }
+        }
     }
     
     $inPortProcessed = $null
@@ -266,7 +366,7 @@ function Transform-Xml {
                 -Passthrough $Passthrough `
                 -PassthroughJava $PassthroughJava `
                 -MergeOutput $MergeOutput `
-                -Namespace $Namespace `
+                -Namespace $effectiveNamespace `
                 -CollectOutput:$CollectOutput
         }
         elseif ($Processor -eq "morganaxproc") {
@@ -281,7 +381,7 @@ function Transform-Xml {
                 -Passthrough $Passthrough `
                 -PassthroughJava $PassthroughJava `
                 -MergeOutput $MergeOutput `
-                -Namespace $Namespace `
+                -Namespace $effectiveNamespace `
                 -Configuration $Configuration `
                 -CollectOutput:$CollectOutput
         }

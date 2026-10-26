@@ -387,4 +387,90 @@ Describe 'Get-PXClassPath' {
     # Add more specific tests for Get-PXClassPath here
 }
 
+Describe 'Namespace registry' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    BeforeEach {
+        # Reset the session registry between tests
+        Get-Namespace | Unregister-Namespace
+    }
+
+    It 'Should register and get a namespace' {
+        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+        $result = Get-Namespace
+        $result.Prefix | Should -Be "pre"
+        $result.Uri | Should -Be "http://example.com/pre"
+    }
+
+    It 'Should filter Get-Namespace by prefix' {
+        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+        Register-Namespace -Prefix "other" -Uri "http://example.com/other"
+        (Get-Namespace).Count | Should -Be 2
+        (Get-Namespace -Prefix "pre").Uri | Should -Be "http://example.com/pre"
+    }
+
+    It 'Should warn and overwrite a conflicting prefix' {
+        Register-Namespace -Prefix "pre" -Uri "http://example.com/one"
+        Register-Namespace -Prefix "pre" -Uri "http://example.com/two" -WarningAction SilentlyContinue -WarningVariable warnings
+        $warnings | Should -Not -BeNullOrEmpty
+        (Get-Namespace -Prefix "pre").Uri | Should -Be "http://example.com/two"
+    }
+
+    It 'Should be idempotent when re-registering the same URI' {
+        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+        { Register-Namespace -Prefix "pre" -Uri "http://example.com/pre" } | Should -Not -Throw
+        (Get-Namespace).Count | Should -Be 1
+    }
+
+    It 'Should unregister namespaces and tolerate unknown prefixes' {
+        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+        Unregister-Namespace -Prefix "pre"
+        (Get-Namespace).Count | Should -Be 0
+        { Unregister-Namespace -Prefix "never-registered" } | Should -Not -Throw
+    }
+
+    It 'Should merge the registry with -Namespace, parameter winning' {
+        Register-Namespace -Prefix "reg" -Uri "http://example.com/reg"
+        Register-Namespace -Prefix "both" -Uri "http://example.com/reg-both"
+
+        $global:CapturedNamespace = $null
+        Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
+        Mock Invoke-XmlCalabash -ModuleName powerxml {
+            $global:CapturedNamespace = $Namespace
+            return "ok"
+        }
+
+        Transform-Xml `
+            -Processor "xmlcalabash" `
+            -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" `
+            -Namespace @{ both = "http://example.com/param-both"; paramOnly = "http://example.com/param-only" }
+
+        $global:CapturedNamespace | Should -Not -BeNullOrEmpty
+        $global:CapturedNamespace["reg"] | Should -Be "http://example.com/reg"
+        $global:CapturedNamespace["both"] | Should -Be "http://example.com/param-both"
+        $global:CapturedNamespace["paramOnly"] | Should -Be "http://example.com/param-only"
+        $global:CapturedNamespace.Count | Should -Be 3
+    }
+
+    It 'Should pass only the registry when -Namespace is omitted' {
+        Register-Namespace -Prefix "solo" -Uri "http://example.com/solo"
+
+        $global:CapturedNamespace = $null
+        Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
+        Mock Invoke-MorganaXProc -ModuleName powerxml {
+            $global:CapturedNamespace = $Namespace
+            return "ok"
+        }
+
+        Transform-Xml `
+            -Processor "morganaxproc" `
+            -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+
+        $global:CapturedNamespace["solo"] | Should -Be "http://example.com/solo"
+        $global:CapturedNamespace.Count | Should -Be 1
+    }
+}
+
 
