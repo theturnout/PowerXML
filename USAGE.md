@@ -248,6 +248,25 @@ Transform-Xml
 
 When a purl resolves to a directory, a file selector is required; ambiguous `filename` matches throw. Single-file artifacts are used directly. Purls that fail to resolve throw a clear error naming the purl and the expected selectors.
 
+## Configuration
+
+`-Configuration` accepts three forms for the XProc processors:
+
+- **Omitted** — MorganaXProc gets an auto-generated config: the XSLT/XQuery connector is auto-detected from the Saxon jar on the classpath (Saxon 12.3+ uses `Saxon12-3`, earlier 12.x uses `Saxon12`, etc.) and the NineML/MarkupBlitz invisible-XML connectors are registered (harmless when their jars are absent). XML Calabash generates its own mimetype configuration internally.
+- **A hashtable** — settings 1-1 with the engine's XML/JSON shape, merged over the auto-detected defaults (explicit entries win):
+
+```powershell
+Transform-Xml 
+	-Processor "morganaxproc" 
+	-Step "p:xslt" 
+	-InPort @{ source = "./input.xml"; stylesheet = "./style.xsl" } 
+	-Configuration @{ "xslt-connector" = "Saxon12-3" }
+```
+
+- **A file path** — used as-is with no merging.
+
+Use `ConvertTo-XmlConfig` to build a config file from a hashtable yourself (keys become elements, `'@'`-prefixed keys become attributes), and `Get-MorganaAutoConfig -Paths <array>` to inspect what would be auto-detected.
+
 ## Failure Behavior
 
 When an XProc processor exits with a non-zero code (a failed or invalid pipeline, a missing step, or a connector error), `Transform-Xml` throws with the engine's exit code and captured output instead of returning the error text as a result. Successful runs return the STDOUT documents as usual.

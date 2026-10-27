@@ -318,6 +318,8 @@ An array of parameters passed directly to the Java JVM.
 Merges the STDOUT and STDERR of the processor into a single stream. Default is true.
 .PARAMETER Namespace
 A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g. @{ pre = "http://example.com/pre" }. Merged with the session-scoped registry (see Register-Namespace); explicit entries here take precedence.
+.PARAMETER Configuration
+Either a path to a processor configuration file, or a hashtable of configuration settings (1-1 with the engine's XML/JSON shape). Hashtables are merged over MorganaXProc's auto-detected defaults; when omitted, the defaults are injected automatically.
 #>
 function Transform-Xml {
     [CmdletBinding(DefaultParameterSetName = "Pipeline")]
@@ -342,7 +344,7 @@ function Transform-Xml {
         [array]$PassthroughJava,
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
-        [string]$Configuration,
+        $Configuration,
         [switch]$CollectOutput
     )
     

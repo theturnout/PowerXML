@@ -601,6 +601,77 @@ Describe 'Input resolution' {
     }
 }
 
+Describe 'Morgana configuration' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    BeforeEach {
+        $xslt30 = Join-Path $TestDrive "xslt30.xsl"
+        Set-Content -Path $xslt30 -Value @'
+<xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:template match="/"><auto-config><xsl:value-of select="name(/*)"/></auto-config></xsl:template>
+</xsl:stylesheet>
+'@
+    }
+
+    It 'Should auto-detect the Saxon connector from the composition paths' {
+        $fakeComp = Join-Path $TestDrive "fake-comp"
+        New-Item -ItemType Directory -Path $fakeComp -Force | Out-Null
+        New-Item -ItemType File -Path (Join-Path $fakeComp "Saxon-HE-12.9.jar") -Force | Out-Null
+        $config = Get-MorganaAutoConfig -Paths @($fakeComp)
+        $config["xslt-connector"] | Should -Be "Saxon12-3"
+        $config["xquery-connector"] | Should -Be "Saxon12-3"
+        $config["ixml-connector"].Count | Should -Be 2
+    }
+
+    It 'Should leave connectors unset when no Saxon jar is present' {
+        $fakeComp = Join-Path $TestDrive "empty-comp"
+        New-Item -ItemType Directory -Path $fakeComp -Force | Out-Null
+        $config = Get-MorganaAutoConfig -Paths @($fakeComp)
+        $config.ContainsKey("xslt-connector") | Should -Be $false
+        $config["ixml-connector"].Count | Should -Be 2
+    }
+
+    It 'Should generate config XML from a hashtable (1-1 with JSON)' {
+        $configPath = ConvertTo-XmlConfig -Config @{
+            "xslt-connector" = "Saxon12-3"
+            "ixml-connector" = @("One", "Two")
+            "mediatype-mapping" = @{ "@file-extension" = "ixml"; "@media-type" = "text/plain" }
+        } -Root "morgana-config" -Namespace "http://www.xml-project.com/morganaxproc"
+        $content = Get-Content -Path $configPath -Raw
+        $content | Should -BeLike "*<morgana-config xmlns=`"http://www.xml-project.com/morganaxproc`">*"
+        $content | Should -BeLike "*<xslt-connector>Saxon12-3</xslt-connector>*"
+        $content | Should -Match "<ixml-connector>One</ixml-connector>[\s\S]*<ixml-connector>Two</ixml-connector>"
+        $content | Should -BeLike "*<mediatype-mapping file-extension=`"ixml`" media-type=`"text/plain`"/>*"
+        Remove-Item $configPath -Force
+    }
+
+    It "morganaxproc - Should run XSLT 3.0 with the auto-injected config" {
+        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $xslt30 }
+        $result | Should -BeLike "*auto-config*"
+    }
+
+    It "morganaxproc - Should let a -Configuration hashtable override auto-detection" {
+        { Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $xslt30 } -Configuration @{ "xslt-connector" = "Saxon10" } } | Should -Throw "*failed with exit code*"
+    }
+
+    It "morganaxproc - Should pass a configuration file path through unchanged" {
+        $userConfig = Join-Path $TestDrive "user-config.xml"
+        Set-Content -Path $userConfig -Value '<?xml version="1.0" encoding="UTF-8"?><morgana-config xmlns="http://www.xml-project.com/morganaxproc"/>'
+        $global:CapturedConfig = $null
+        Mock Invoke-MorganaXProc -ModuleName powerxml {
+            $global:CapturedConfig = $Configuration
+            return "ok"
+        }
+
+        Transform-Xml -Processor "morganaxproc" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" -Configuration $userConfig
+
+        $global:CapturedConfig | Should -Be $userConfig
+        Test-Path $userConfig | Should -Be $true
+    }
+}
+
 Describe 'Processor failure handling' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking

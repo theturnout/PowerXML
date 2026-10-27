@@ -23,6 +23,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 - **Flexible Input** – Accept file paths, URIs, Package URLs, XML strings, or .NET XML objects as input
 - **Port Binding** – Route multiple inputs/outputs through named ports
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
+- **Auto-Configuration** – Processor configs are auto-generated with detected defaults (Saxon connector detection, iXML connectors); override with a `-Configuration` hashtable
 
 ## Requirements
 

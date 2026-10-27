@@ -9,3 +9,5 @@ Export-ModuleMember -Function Get-MultiXmlDocuments
 Export-ModuleMember -Function Register-Namespace
 Export-ModuleMember -Function Unregister-Namespace
 Export-ModuleMember -Function Get-Namespace
+Export-ModuleMember -Function ConvertTo-XmlConfig
+Export-ModuleMember -Function Get-MorganaAutoConfig
