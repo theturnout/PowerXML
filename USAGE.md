@@ -218,6 +218,36 @@ $messages = Transform-Xml `
 ```
 For more details, see the module documentation or run `Get-Help Transform-Xml` in PowerShell.
 
+## Input Resolution
+
+`Transform-Xml` accepts inputs in several forms, resolved in this order:
+
+- **Filesystem paths** via `-Pipeline` / `-InPort` (the default)
+- **Direct XML content** via a parameter — strings and .NET XML objects are written to a temporary file automatically
+- **STDIN** via the PowerShell pipeline (piped input is passed to the processor's default port)
+- **URIs** — passed through to the processor, which fetches them. PowerXML does not validate or restrict URI schemes: what is supported depends on the target engine (the Java resource resolution used by the XProc processors, .NET/MSXML/libxml2 for the XSLT engines). `file://` and `http(s)://` are verified to work on both XProc processors
+- **Package URLs** — values starting with `pkg:` are resolved through PolyglotPM into the local repository. Select a file inside the package with the `filename` qualifier (maven and nuget packages, where it has no download meaning) or a `#subpath` (any package type; for github/codeberg/sourceforge purls, where `filename` names the downloadable asset, use `#subpath`)
+
+```powershell
+# A pipeline shipped inside a package, referenced by purl
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Pipeline "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip#helloWorld.xpl"
+
+# A stylesheet shipped inside a maven package, selected by filename
+Transform-Xml 
+	-Processing "xslt" -Processor "dotnet" 
+	-Pipeline "pkg:maven/nist.gov/oscal-thing?filename=convert.xsl"
+
+# A file URI as input
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Step "p:identity" 
+	-InPort @{ source = "file:///C:/path/input.xml" }
+```
+
+When a purl resolves to a directory, a file selector is required; ambiguous `filename` matches throw. Single-file artifacts are used directly. Purls that fail to resolve throw a clear error naming the purl and the expected selectors.
+
 ## Failure Behavior
 
 When an XProc processor exits with a non-zero code (a failed or invalid pipeline, a missing step, or a connector error), `Transform-Xml` throws with the engine's exit code and captured output instead of returning the error text as a result. Successful runs return the STDOUT documents as usual.

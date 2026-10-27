@@ -20,7 +20,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 
 - **Unified API** – Single `Transform-Xml` CmdLet supports both XProc and XSLT processing
 - **Direct Step Execution** – Run a single XProc step (e.g. `-Step "p:xslt"`) without writing a pipeline; XML Calabash runs steps natively, MorganaXProc uses a synthesized wrapper
-- **Flexible Input** – Accept file paths, XML strings, or .NET XML objects as input
+- **Flexible Input** – Accept file paths, URIs, Package URLs, XML strings, or .NET XML objects as input
 - **Port Binding** – Route multiple inputs/outputs through named ports
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
 

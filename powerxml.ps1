@@ -50,6 +50,10 @@ function Resolve-XmlInput {
         if ($xmlTypes -contains $InputObject.GetType().FullName) {
             $isXml = $true
         }
+        elseif ($InputObject -is [string] -and $InputObject -like "pkg:*") {
+            # Package URLs resolve through PolyglotPM to a local file (#31)
+            return Resolve-PurlInput -PurlString $InputObject
+        }
         elseif ($InputObject -is [string]) {
             # try to parse the string as XML
             try {
@@ -91,6 +95,68 @@ function Resolve-XmlInput {
     else {
         return $InputObject
     }
+}
+<#
+.SYNOPSIS
+Resolves a Package URL input to a local file path.
+.DESCRIPTION
+Resolves the purl through PolyglotPM (fetching it into the local repository if not
+already cached) and locates the requested file within the installed package: via
+the purl #subpath (relative to the package directory), via the filename qualifier
+for package types where it has no download meaning (maven, nuget — searched
+recursively within the package directory), or the artifact itself when the purl
+resolves to a single file. For github, codeberg, and sourceforge purls the filename
+qualifier names the downloadable asset; use #subpath to select a file within those
+packages.
+.PARAMETER PurlString
+The Package URL, e.g. "pkg:maven/org.example/lib@1.0?filename=convert.xpl".
+.OUTPUTS
+The local file path.
+#>
+function Resolve-PurlInput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PurlString
+    )
+    $purl = ConvertFrom-PkgUri $PurlString
+    $paths = Get-PackageFromPurl -Purl $purl
+    $packagePath = if ($paths -is [array]) { $paths[0] } else { $paths }
+
+    if (-not $packagePath -or -not (Test-Path $packagePath)) {
+        throw "The purl did not resolve to an installed package (purl: $PurlString). For github, codeberg, and sourceforge purls the filename qualifier names the downloadable asset; use #subpath to select a file inside the package."
+    }
+
+    $subpath = if ($purl.Subpath) { $purl.Subpath.TrimStart("#") } else { $null }
+    $fileName = if ($null -ne $purl.QualifiersParsed) { $purl.QualifiersParsed["filename"] } else { $null }
+
+    if ($subpath) {
+        $candidate = Join-Path $packagePath $subpath
+        if (Test-Path $candidate -PathType Leaf) {
+            return $candidate
+        }
+        throw "File '$subpath' not found within package at '$packagePath' (purl: $PurlString)."
+    }
+
+    # For types where the filename qualifier has no download meaning (maven, nuget),
+    # it selects the file inside the installed package
+    $downloadTypes = @("github", "codeberg", "sourceforge")
+    if ($fileName -and $purl.Type -notin $downloadTypes) {
+        $matches = @(Get-ChildItem -Path $packagePath -Filter $fileName -Recurse -File -ErrorAction SilentlyContinue)
+        if ($matches.Count -eq 0) {
+            throw "File '$fileName' not found within package at '$packagePath' (purl: $PurlString)."
+        }
+        if ($matches.Count -gt 1) {
+            $found = ($matches | ForEach-Object { $_.FullName }) -join "', '"
+            throw "File '$fileName' is ambiguous within package at '$packagePath': '$found'. Use a #subpath instead."
+        }
+        return $matches[0].FullName
+    }
+
+    if (Test-Path $packagePath -PathType Leaf) {
+        return $packagePath
+    }
+    throw "The purl resolves to a directory at '$packagePath'; specify ?filename= or a #subpath to select a file within it (purl: $PurlString)."
 }
 <#
 .SYNOPSIS

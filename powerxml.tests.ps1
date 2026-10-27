@@ -479,6 +479,128 @@ Describe 'Direct step execution' {
     }
 }
 
+Describe 'Input resolution' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    Context "Run URI inputs for each XProc processor" -ForEach @(
+        @{Name = "xmlcalabash" },
+        @{Name = "morganaxproc" }
+    ) {
+        It "$($_.Name) - Should accept a file URI as InPort source" {
+            $orderFileUri = "file:///" + (("$PSScriptRoot/test_data/order.xml") -replace "\\", "/")
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = $orderFileUri }
+            $result | Should -BeLike "*ORD-001*"
+        }
+
+        It "$($_.Name) - Should accept a file URI as Pipeline" {
+            $pipelineFileUri = "file:///" + (("$PSScriptRoot/test_data/helloWorld.xpl") -replace "\\", "/")
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFileUri
+            $result | Should -BeLike "*Hello, World!"
+        }
+    }
+
+    It "xmlcalabash - Should accept an http URI as InPort source" {
+        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:identity" -InPort @{ source = "https://www.w3.org/2001/xml.xsd" }
+        $first = @($result) | Select-Object -First 1
+        $content = if ($first -is [System.Xml.XmlDocument]) { $first.OuterXml } else { [string]$first }
+        $content | Should -BeLike "*schema*"
+    }
+
+    Context "PURL inputs (deterministic, .NET XSLT path)" {
+        BeforeAll {
+            # Isolated PolyglotPM repository with pre-installed packages so
+            # resolution is fully local (nuget/maven branches have cache checks)
+            $script:PreviousPolyglotpm = $env:polyglotpm
+            $global:PurlRepo = Join-Path $TestDrive "purl-repo"
+            New-Item -ItemType Directory -Path $global:PurlRepo -Force | Out-Null
+            $env:polyglotpm = $global:PurlRepo
+        }
+
+        AfterAll {
+            $env:polyglotpm = $script:PreviousPolyglotpm
+        }
+
+        BeforeEach {
+            # Fake nuget package: installed dir with a stylesheet deep inside plus input
+            $nugetDir = Join-Path $global:PurlRepo "FakePkg-1.0"
+            $deepDir = Join-Path $nugetDir "deep"
+            New-Item -ItemType Directory -Path $deepDir -Force | Out-Null
+            Set-Content -Path (Join-Path $deepDir "transform.xsl") -Value @'
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:template match="/"><purl-result><xsl:value-of select="/root/message"/></purl-result></xsl:template>
+</xsl:stylesheet>
+'@
+            Set-Content -Path (Join-Path $nugetDir "input.xml") -Value "<root><message>purl-resolved</message></root>"
+
+            # Fake maven artifact: jar and pom decoys (so nothing downloads) plus a stylesheet
+            $mavenDir = Join-Path $global:PurlRepo "fake-artifact-1.0"
+            New-Item -ItemType Directory -Path $mavenDir -Force | Out-Null
+            Set-Content -Path (Join-Path $mavenDir "fake-artifact-1.0.jar") -Value "fake jar"
+            Set-Content -Path (Join-Path $mavenDir "pom.xml") -Value @'
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.fake</groupId>
+    <artifactId>fake-artifact</artifactId>
+    <version>1.0</version>
+    <dependencies/>
+</project>
+'@
+            Set-Content -Path (Join-Path $mavenDir "transform.xsl") -Value (Get-Content -Path (Join-Path $deepDir "transform.xsl") -Raw)
+        }
+
+        It 'Should resolve nuget purls via the filename qualifier (recursive search)' {
+            $result = Transform-Xml -Processing "xslt" -Processor "dotnet" `
+                -Pipeline "pkg:nuget/FakePkg@1.0?filename=transform.xsl" `
+                -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml"
+            $result | Should -BeLike "*purl-resolved*"
+        }
+
+        It 'Should resolve maven purls via the filename qualifier' {
+            $result = Transform-Xml -Processing "xslt" -Processor "dotnet" `
+                -Pipeline "pkg:maven/org.fake/fake-artifact@1.0?filename=transform.xsl" `
+                -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml"
+            $result | Should -BeLike "*purl-resolved*"
+        }
+
+        It 'Should resolve a purl via the #subpath' {
+            $result = Transform-Xml -Processing "xslt" -Processor "dotnet" `
+                -Pipeline "pkg:nuget/FakePkg@1.0#deep/transform.xsl" `
+                -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml"
+            $result | Should -BeLike "*purl-resolved*"
+        }
+
+        It 'Should throw when the file is not found in the package' {
+            { Transform-Xml -Processing "xslt" -Processor "dotnet" `
+                    -Pipeline "pkg:nuget/FakePkg@1.0?filename=nothere.xsl" `
+                    -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml" } | Should -Throw "*not found*"
+        }
+
+        It 'Should throw when the filename is ambiguous' {
+            Set-Content -Path (Join-Path $global:PurlRepo "FakePkg-1.0\twin.xsl") -Value "twin"
+            Set-Content -Path (Join-Path $global:PurlRepo "FakePkg-1.0\deep\twin.xsl") -Value "twin"
+            { Transform-Xml -Processing "xslt" -Processor "dotnet" `
+                    -Pipeline "pkg:nuget/FakePkg@1.0?filename=twin.xsl" `
+                    -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml" } | Should -Throw "*ambiguous*"
+        }
+
+        It 'Should throw when a directory package has no file selector' {
+            { Transform-Xml -Processing "xslt" -Processor "dotnet" `
+                    -Pipeline "pkg:nuget/FakePkg@1.0" `
+                    -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml" } | Should -Throw "*resolves to a directory*"
+        }
+    }
+
+    Context "PURL inputs (live, cached)" {
+        It 'Should run a pipeline from a real package via purl' {
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" `
+                -Pipeline "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip#helloWorld.xpl"
+            $result | Should -BeLike "*Share and enjoy*"
+        }
+    }
+}
+
 Describe 'Processor failure handling' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
