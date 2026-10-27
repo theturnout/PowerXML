@@ -479,6 +479,27 @@ Describe 'Direct step execution' {
     }
 }
 
+Describe 'Processor failure handling' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    Context "Run for each XProc processor" -ForEach @(
+        @{Name = "xmlcalabash" },
+        @{Name = "morganaxproc" }
+    ) {
+        It "$($_.Name) - Should throw when the pipeline is invalid" {
+            $badPipeline = Join-Path $TestDrive "bad-port.xpl"
+            Set-Content -Path $badPipeline -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><p:declare-step xmlns:p=`"http://www.w3.org/ns/xproc`" name=`"pipeline`" version=`"3.0`"><p:identity><p:with-input port=`"nope`"/></p:identity></p:declare-step>"
+            { Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $badPipeline } | Should -Throw "*failed with exit code*"
+        }
+
+        It "$($_.Name) - Should throw when the step does not exist" {
+            { Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:nonexistent-step" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } } | Should -Throw "*failed with exit code*"
+        }
+    }
+}
+
 Describe 'Namespace registry' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking

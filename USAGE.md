@@ -218,6 +218,10 @@ $messages = Transform-Xml `
 ```
 For more details, see the module documentation or run `Get-Help Transform-Xml` in PowerShell.
 
+## Failure Behavior
+
+When an XProc processor exits with a non-zero code (a failed or invalid pipeline, a missing step, or a connector error), `Transform-Xml` throws with the engine's exit code and captured output instead of returning the error text as a result. Successful runs return the STDOUT documents as usual.
+
 ## Using CycloneDX SBOMs
 
 PowerXML uses the CycloneDX Software Bill of Materials (SBOM) as a manifest format. PolyglotPM understands a small subset of CycloneDX structures, primarily components and compositions. Components are defined with Package URLs (PURLs) that specify where to retrieve them from various package ecosystems. Components form a library of artifacts that can be aggregated into compositions, which may be called for by a particular invocation of `Transform-Xml` via the `-TargetComposition` parameter. This allows you to define complex software compositions and their dependencies in a standardized format, and have PolyglotPM handle the retrieval and management of those dependencies automatically.

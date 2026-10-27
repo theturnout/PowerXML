@@ -328,6 +328,13 @@ function Invoke-XmlCalabash {
             $output = $null | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
+
+    # Surface processor failures: a non-zero exit code means the run failed (#29)
+    if ($LASTEXITCODE -ne 0) {
+        $failureText = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
+        throw "XML Calabash failed with exit code $LASTEXITCODE`:$failureText"
+    }
+
     $stdoutResult = if ($output -is [array]) {
         $output -join "`n" | Get-MultiXmlDocuments
     }
@@ -485,6 +492,13 @@ function Invoke-MorganaXProc {
     else {
         $output = & java -cp "$cp" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
     }
+
+    # Surface processor failures: a non-zero exit code means the run failed (#29)
+    if ($LASTEXITCODE -ne 0) {
+        $failureText = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
+        throw "MorganaXProc failed with exit code $LASTEXITCODE`:$failureText"
+    }
+
     $stdoutResult = if ($output -is [array]) {
         $output -join "`n" | Get-MultiXmlDocuments
     }
