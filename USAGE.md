@@ -99,6 +99,26 @@ Transform-Xml
 	-Options @{ 'pre:opt' = 42 }
 ```
 
+### Run a Step Directly
+
+Instead of writing a pipeline, run a single step. Your `-InPort`/`-OutPort` keys define the ports the step sees:
+
+```powershell
+# Run p:xslt directly on XML Calabash
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Step "p:xslt" 
+	-InPort @{ source = "./input.xml"; stylesheet = "./transform.xsl" }
+
+# Unprefixed names get the p: namespace
+Transform-Xml 
+	-Processor "morganaxproc" 
+	-Step "xinclude" 
+	-InPort "./input.xml"
+```
+
+XML Calabash runs the step natively (`run --step:`); for MorganaXProc, PowerXML synthesizes a wrapper pipeline behind the scenes. Extension steps need their prefix bound first (see Register Namespaces for the Session). Note that in step mode, `-Options` are limited to the step's declared options.
+
 ### Register Namespaces for the Session
 
 Namespace prefixes registered for the session are merged into every XProc invocation; explicit `-Namespace` entries take precedence over the registry:

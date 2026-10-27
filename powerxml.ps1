@@ -254,7 +254,7 @@ Merges the STDOUT and STDERR of the processor into a single stream. Default is t
 A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g. @{ pre = "http://example.com/pre" }. Merged with the session-scoped registry (see Register-Namespace); explicit entries here take precedence.
 #>
 function Transform-Xml {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = "Pipeline")]
     param(
         [Parameter(ValueFromPipeline = $true)]
         $InputObject,        
@@ -263,8 +263,10 @@ function Transform-Xml {
         [ValidateSet("xmlcalabash", "morganaxproc", "dotnet", "msxml", "altova", "xsltproc", "phoenixml")]
         $Processor = "xmlcalabash",
         [hashtable]$PackageResolution,
-        [Parameter(Mandatory = $true)] 
-        $Pipeline,        
+        [Parameter(Mandatory = $true, ParameterSetName = "Pipeline")]
+        $Pipeline,
+        [Parameter(Mandatory = $true, ParameterSetName = "Step")]
+        [string]$Step,
         [Alias("parameters")]
         [hashtable]$Options,
         $InPort,
@@ -278,27 +280,13 @@ function Transform-Xml {
         [switch]$CollectOutput
     )
     
-    $pipelinePath = Resolve-XmlInput -InputObject $Pipeline -Extension "xpl"
-    
-    # Normalize single values (or arrays of documents) into default-port bindings.
-    # Named hashtables are passed through unchanged.
-    if ($null -ne $InPort -and $InPort -isnot [hashtable] -and $InPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($InPort).Count -gt 0) {
-        $portName = if ($Processing -eq "xproc") {
-            Get-PrimaryPort -PipelinePath $pipelinePath -Direction Input
-        }
-        else {
-            "source"
-        }
-        $InPort = @{ $portName = $InPort }
+    if ($PSCmdlet.ParameterSetName -eq "Step" -and $Processing -ne "xproc") {
+        throw "-Step is only supported for XProc processing. Use -Pipeline to run XSLT stylesheets."
     }
-    if ($null -ne $OutPort -and $OutPort -isnot [hashtable] -and $OutPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($OutPort).Count -gt 0) {
-        $portName = if ($Processing -eq "xproc") {
-            Get-PrimaryPort -PipelinePath $pipelinePath -Direction Output
-        }
-        else {
-            "result"
-        }
-        $OutPort = @{ $portName = $OutPort }
+
+    $pipelinePath = $null
+    if ($PSCmdlet.ParameterSetName -eq "Pipeline") {
+        $pipelinePath = Resolve-XmlInput -InputObject $Pipeline -Extension "xpl"
     }
 
     # Merge the session-scoped namespace registry (Register-Namespace) with the
@@ -315,6 +303,54 @@ function Transform-Xml {
                 $effectiveNamespace[$key] = $Namespace[$key]
             }
         }
+    }
+
+    # Resolve the step QName for direct step execution; unprefixed names get "p:"
+    # and prefixes resolve through the effective namespace map ("p" is built in)
+    $stepQName = $null
+    if ($PSCmdlet.ParameterSetName -eq "Step") {
+        $stepPrefix, $stepLocal = $Step -split ":", 2
+        if (-not $stepLocal) {
+            $stepQName = "p:$Step"
+        }
+        else {
+            $xprocNamespace = "http://www.w3.org/ns/xproc"
+            $prefixUri = if ($stepPrefix -eq "p") {
+                $xprocNamespace
+            }
+            elseif ($effectiveNamespace -and $effectiveNamespace.ContainsKey($stepPrefix)) {
+                $effectiveNamespace[$stepPrefix]
+            }
+            else {
+                $null
+            }
+            if (-not $prefixUri) {
+                throw "Step namespace prefix '$stepPrefix' is not bound. Register it with Register-Namespace or pass -Namespace."
+            }
+            $stepQName = $Step
+        }
+    }
+
+    # Normalize single values (or arrays of documents) into default-port bindings.
+    # Named hashtables are passed through unchanged. Direct step execution binds
+    # to the conventional ports since there is no pipeline to introspect.
+    if ($null -ne $InPort -and $InPort -isnot [hashtable] -and $InPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($InPort).Count -gt 0) {
+        $portName = if ($Processing -eq "xproc") {
+            if ($stepQName) { "source" } else { Get-PrimaryPort -PipelinePath $pipelinePath -Direction Input }
+        }
+        else {
+            "source"
+        }
+        $InPort = @{ $portName = $InPort }
+    }
+    if ($null -ne $OutPort -and $OutPort -isnot [hashtable] -and $OutPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($OutPort).Count -gt 0) {
+        $portName = if ($Processing -eq "xproc") {
+            if ($stepQName) { "result" } else { Get-PrimaryPort -PipelinePath $pipelinePath -Direction Output }
+        }
+        else {
+            "result"
+        }
+        $OutPort = @{ $portName = $OutPort }
     }
     
     $inPortProcessed = $null
@@ -358,6 +394,7 @@ function Transform-Xml {
             return Invoke-XmlCalabash `
                 -Paths $Paths `
                 -InputObject $InputObject `
+                -Step $stepQName `
                 -Pipeline $pipelinePath `
                 -Options $Options `
                 -InPort $inPortProcessed `
@@ -370,20 +407,35 @@ function Transform-Xml {
                 -CollectOutput:$CollectOutput
         }
         elseif ($Processor -eq "morganaxproc") {
-            return Invoke-MorganaXProc `
-                -Paths $Paths `
-                -InputObject $InputObject `
-                -Pipeline $pipelinePath `
-                -Options $Options `
-                -InPort $inPortProcessed `
-                -OutPort $OutPort `
-                -Catalog $Catalog `
-                -Passthrough $Passthrough `
-                -PassthroughJava $PassthroughJava `
-                -MergeOutput $MergeOutput `
-                -Namespace $effectiveNamespace `
-                -Configuration $Configuration `
-                -CollectOutput:$CollectOutput
+            # MorganaXProc has no step-run CLI: synthesize a wrapper pipeline (#9)
+            $morganaPipelinePath = $pipelinePath
+            if ($stepQName) {
+                $morganaPipelinePath = New-StepShell -Step $stepQName `
+                    -Namespaces $effectiveNamespace `
+                    -InPort $inPortProcessed `
+                    -OutPort $OutPort
+            }
+            try {
+                return Invoke-MorganaXProc `
+                    -Paths $Paths `
+                    -InputObject $InputObject `
+                    -Pipeline $morganaPipelinePath `
+                    -Options $Options `
+                    -InPort $inPortProcessed `
+                    -OutPort $OutPort `
+                    -Catalog $Catalog `
+                    -Passthrough $Passthrough `
+                    -PassthroughJava $PassthroughJava `
+                    -MergeOutput $MergeOutput `
+                    -Namespace $effectiveNamespace `
+                    -Configuration $Configuration `
+                    -CollectOutput:$CollectOutput
+            }
+            finally {
+                if ($stepQName -and $morganaPipelinePath -and (Test-Path $morganaPipelinePath -PathType Leaf)) {
+                    Remove-Item -Path $morganaPipelinePath -Force -ErrorAction SilentlyContinue
+                }
+            }
         }
         else {
             throw "Unsupported processor $Processor for processing type $Processing"

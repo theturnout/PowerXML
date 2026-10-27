@@ -50,16 +50,116 @@ function Get-MultiXmlDocuments {
 }
 <#
 .SYNOPSIS
+Synthesizes an XProc wrapper pipeline that runs a single step.
+.DESCRIPTION
+Generates a p:declare-step shell for processors without a direct step-run CLI
+(e.g. MorganaXProc). One input/output port is declared per bound port,
+non-primary inputs are wired explicitly with p:pipe, and primary connections
+flow implicitly. Returns the path to a temporary .xpl file; the caller is
+responsible for removing it after use.
+.PARAMETER Step
+The step QName, e.g. "p:xslt". The prefix must be "p" or resolve through Namespaces.
+.PARAMETER Namespaces
+Effective prefix-to-URI namespace map (registry merged with the -Namespace parameter).
+.PARAMETER InPort
+Resolved input port bindings (port name to value).
+.PARAMETER OutPort
+Output port bindings (port name to path). When empty, a conventional primary result port is declared.
+.OUTPUTS
+The path to the generated temporary pipeline file.
+#>
+function New-StepShell {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Step,
+        [hashtable]$Namespaces,
+        [hashtable]$InPort,
+        [hashtable]$OutPort
+    )
+    $xprocNamespace = "http://www.w3.org/ns/xproc"
+    $stepPrefix, $stepLocal = $Step -split ":", 2
+    if (-not $stepLocal) {
+        $stepPrefix = "p"
+        $stepLocal = $Step
+    }
+    if ($stepPrefix -eq "p") {
+        $prefixUri = $xprocNamespace
+    }
+    elseif ($Namespaces -and $Namespaces.ContainsKey($stepPrefix)) {
+        $prefixUri = $Namespaces[$stepPrefix]
+    }
+    else {
+        throw "Step namespace prefix '$stepPrefix' is not bound. Register it with Register-Namespace or pass -Namespace."
+    }
+
+    # One declared input port per bound input; "source" becomes the primary port
+    $inputLines = @()
+    $pipedInputNames = @()
+    if ($InPort -and $InPort.Count -gt 0) {
+        foreach ($portName in @($InPort.Keys)) {
+            if ($portName -eq "source") {
+                $inputLines += "    <p:input port=`"source`" primary=`"true`" sequence=`"true`"/>"
+            }
+            else {
+                $inputLines += "    <p:input port=`"$portName`" sequence=`"true`"/>"
+                $pipedInputNames += $portName
+            }
+        }
+    }
+
+    # One declared output port per bound output (conventional "result" when none); "result" is primary.
+    # Non-primary outputs connect explicitly to the same-named port on the wrapped step.
+    $outputKeys = if ($OutPort -and $OutPort.Count -gt 0) { @($OutPort.Keys) } else { @("result") }
+    $outputLines = @()
+    foreach ($portName in $outputKeys) {
+        if ($portName -eq "result") {
+            $outputLines += "    <p:output port=`"result`" primary=`"true`" sequence=`"true`"/>"
+        }
+        else {
+            $outputLines += "    <p:output port=`"$portName`" sequence=`"true`">"
+            $outputLines += "        <p:pipe step=`"wrapped-step`" port=`"$portName`"/>"
+            $outputLines += "    </p:output>"
+        }
+    }
+
+    # Explicit wiring for the non-primary inputs; the primary input and output connect implicitly
+    $stepLines = @("    <$stepPrefix`:$stepLocal name=`"wrapped-step`">")
+    foreach ($portName in $pipedInputNames) {
+        $stepLines += "        <p:with-input port=`"$portName`">"
+        $stepLines += "            <p:pipe step=`"pipeline`" port=`"$portName`"/>"
+        $stepLines += "        </p:with-input>"
+    }
+    $stepLines += "    </$stepPrefix`:$stepLocal>"
+
+    $namespaceDecl = if ($stepPrefix -eq "p") { "" } else { " xmlns:$stepPrefix=`"$prefixUri`"" }
+    $shellLines = @(
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        "<p:declare-step xmlns:p=`"$xprocNamespace`"$namespaceDecl name=`"pipeline`" version=`"3.0`">"
+    )
+    $shellLines += $inputLines
+    $shellLines += $outputLines
+    $shellLines += $stepLines
+    $shellLines += "</p:declare-step>"
+
+    $shellPath = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xpl")
+    Set-Content -Path $shellPath -Value ($shellLines -join "`n") -Encoding UTF8
+    return $shellPath
+}
+<#
+.SYNOPSIS
 Invokes the XmlCalabash processor with the specified parameters.
 .PARAMETER Paths
 An array of paths to search for the XmlCalabash processor and its dependencies.
+.PARAMETER Step
+When specified, runs this step directly (run --step:QName) instead of the pipeline.
 #> 
 function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(
         [array]$Paths,        
         $InputObject,
-        [Parameter(Mandatory = $true)] 
+        [string]$Step,
         $Pipeline,        
         [hashtable]$Options,
         [hashtable]$InPort,
@@ -187,8 +287,18 @@ function Invoke-XmlCalabash {
     if ($tempFile) {
         $xcArgs += @("--configuration:`"$tempFile`"")
     }
-        
-    $xcArgs += @($Pipeline)
+
+    if ($Step) {
+        # Direct step execution: the run command prefix is required for --step
+        $xcArgs += @("run")
+        $xcArgs += @("--step:$Step")
+    }
+    elseif ($Pipeline) {
+        $xcArgs += @($Pipeline)
+    }
+    else {
+        throw "Invoke-XmlCalabash requires either -Pipeline or -Step."
+    }
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
     Write-Debug "args to processor is $xcArgs"

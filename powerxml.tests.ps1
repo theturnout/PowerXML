@@ -387,6 +387,98 @@ Describe 'Get-PXClassPath' {
     # Add more specific tests for Get-PXClassPath here
 }
 
+Describe 'Direct step execution' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+        Get-Namespace | Unregister-Namespace
+    }
+
+    Context "Run for each XProc processor" -ForEach @(
+        @{Name = "xmlcalabash"; EngineName = "XML Calabash" },
+        @{Name = "morganaxproc"; EngineName = "MorganaXProc-IIIse" }
+    ) {
+        It "$($_.Name) - Should run p:identity directly" {
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+            $result | Should -BeLike "*ORD-001*"
+        }
+
+        It "$($_.Name) - Should run a step with a single-value InPort" {
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort "$PSScriptRoot/test_data/order.xml"
+            $result | Should -BeLike "*ORD-001*"
+        }
+
+        It "$($_.Name) - Should run p:xinclude directly" {
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:xinclude" -InPort @{ source = "$PSScriptRoot/test_data/xinclude-host.xml" }
+            $result | Should -BeLike "*Included content here*"
+        }
+
+        It "$($_.Name) - Should write step output to a file via outPort" {
+            $outputFileName = "$TestDrive/step_output.xml"
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } -OutPort @{ result = $outputFileName }
+            Test-Path $outputFileName | Should -Be $true
+            (Get-Content $outputFileName -Raw) | Should -BeLike "*ORD-001*"
+        }
+    }
+
+    It "xmlcalabash - Should run p:xslt directly with a stylesheet port" {
+        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = "$PSScriptRoot/test_data/order-total.xsl" }
+        $result | Should -BeLike "*order-summary*"
+    }
+
+    It "xmlcalabash - Should default unprefixed step names to the p: namespace" {
+        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+        $result | Should -BeLike "*ORD-001*"
+    }
+
+    It "Should throw when -Step is used with -Processing xslt" {
+        { Transform-Xml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" } | Should -Throw "*only supported for XProc*"
+    }
+
+    It "Should throw when both -Step and -Pipeline are supplied" {
+        { Transform-Xml -Processor "xmlcalabash" -Step "p:identity" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" } | Should -Throw
+    }
+
+    It "Should throw for step prefixes that are not bound to a namespace" {
+        { Transform-Xml -Processor "xmlcalabash" -Step "cx:dtd-validator" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } } | Should -Throw "*not bound*"
+    }
+
+    It "Should accept a registered extension prefix" {
+        Register-Namespace -Prefix "ex" -Uri "http://example.com/ex"
+        $global:CapturedStep = $null
+        Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
+        Mock Invoke-XmlCalabash -ModuleName powerxml {
+            $global:CapturedStep = $Step
+            return "ok"
+        }
+
+        Transform-Xml -Processor "xmlcalabash" -Step "ex:mystep"
+
+        $global:CapturedStep | Should -Be "ex:mystep"
+        Unregister-Namespace -Prefix "ex"
+    }
+
+    It "Should synthesize a shell for morganaxproc step runs" {
+        $global:CapturedShell = $null
+        $global:CapturedShellPath = $null
+        Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
+        Mock Invoke-MorganaXProc -ModuleName powerxml {
+            $global:CapturedShellPath = $Pipeline
+            $global:CapturedShell = Get-Content -Path $Pipeline -Raw
+            return "ok"
+        }
+
+        Transform-Xml -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "in.xml"; stylesheet = "style.xsl" } -OutPort @{ result = "out.xml" }
+
+        $global:CapturedShell | Should -BeLike "*<p:xslt*"
+        $global:CapturedShell | Should -BeLike "*<p:input port=`"source`" primary=`"true`"*"
+        $global:CapturedShell | Should -BeLike "*<p:with-input port=`"stylesheet`">*"
+        $global:CapturedShell | Should -BeLike "*<p:pipe step=`"pipeline`" port=`"stylesheet`"/>*"
+        $global:CapturedShell | Should -BeLike "*<p:output port=`"result`" primary=`"true`"*"
+        # The temporary shell should be cleaned up after the run
+        Test-Path $global:CapturedShellPath -PathType Leaf | Should -Be $false
+    }
+}
+
 Describe 'Namespace registry' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking

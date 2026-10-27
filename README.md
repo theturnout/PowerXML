@@ -19,6 +19,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 ## Features
 
 - **Unified API** – Single `Transform-Xml` CmdLet supports both XProc and XSLT processing
+- **Direct Step Execution** – Run a single XProc step (e.g. `-Step "p:xslt"`) without writing a pipeline; XML Calabash runs steps natively, MorganaXProc uses a synthesized wrapper
 - **Flexible Input** – Accept file paths, XML strings, or .NET XML objects as input
 - **Port Binding** – Route multiple inputs/outputs through named ports
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
@@ -95,7 +96,8 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object) |
+| `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object); mutually exclusive with `-Step` |
+| `-Step` | string | Run an XProc step directly, e.g. `p:xslt` or unprefixed `identity`; bound ports become the step's ports |
 | `-Processing` | string | Processing type: `xproc` (default) or `xslt` |
 | `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc`, `phoenixml` |
 | `-InPort` | hashtable/string/xml | Input port bindings: `@{ portName = "./test_data/order.xml" }`; a single value binds to the pipeline's primary input port |
