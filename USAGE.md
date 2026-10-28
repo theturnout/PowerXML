@@ -248,6 +248,32 @@ Transform-Xml
 
 When a purl resolves to a directory, a file selector is required; ambiguous `filename` matches throw. Single-file artifacts are used directly. Purls that fail to resolve throw a clear error naming the purl and the expected selectors.
 
+## Multipart MIME
+
+Documents can travel in and out of `Transform-Xml` as a single `multipart/mixed` file, with an `X-Port` header naming the port each part belongs to.
+
+**As input** — any `-InPort` value that points at a multipart file is detected automatically: parts are parsed and routed to the ports named by their `X-Port` headers (parts without an `X-Port` go to the port the file was bound to, in order, as a sequence):
+
+```powershell
+# routed.mime contains parts labeled X-Port: source and X-Port: stylesheet
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Step "p:xslt" 
+	-InPort @{ source = "./routed.mime" }
+```
+
+**As output** — `-MultiplexOutput` writes every output (STDOUT documents plus any bound output ports) to one multipart file, STDOUT documents labeled with the conventional `result` port:
+
+```powershell
+Transform-Xml 
+	-Processor "xmlcalabash" 
+	-Step "p:xslt" 
+	-InPort @{ source = "./input.xml"; stylesheet = "./style.xsl" } 
+	-MultiplexOutput "./out.mime"
+```
+
+Use `ConvertTo-MimeMultipart` to build such files yourself from parts with `Port`, `Content`, and `ContentType` properties. This works identically on both XProc processors (PowerXML handles the multipart format itself rather than relying on engine-specific options).
+
 ## Configuration
 
 `-Configuration` accepts three forms for the XProc processors:

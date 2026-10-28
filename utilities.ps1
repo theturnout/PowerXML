@@ -93,6 +93,60 @@ function Parse-MimeMultipart {
         Write-Output $part
     }
 }
+<#
+.SYNOPSIS
+    Builds a MIME multipart message from document parts.
+.DESCRIPTION
+    Produces the same multipart/mixed format that Parse-MimeMultipart reads:
+    a generated boundary, a Content-Type header per part, and an X-Port header
+    naming the port the part belongs to (so the message can be routed back to
+    ports as input). XML documents are serialized with application/xml content
+    type. Returns the message as a string, or writes it to a file when -Path
+    is given.
+.PARAMETER Parts
+    One or more objects with Port, Content, and optional ContentType properties.
+.PARAMETER Path
+    Optional file path to write the message to.
+.OUTPUTS
+    The multipart message string, or the file path when -Path is used.
+#>
+function ConvertTo-MimeMultipart {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Parts,
+        [string]$Path
+    )
+    $boundary = "PowerXML-$([guid]::NewGuid().ToString('N'))"
+    $lines = @()
+    foreach ($part in $Parts) {
+        $content = if ($part.Content -is [System.Xml.XmlDocument]) { $part.Content.OuterXml } else { [string]$part.Content }
+        $contentType = if ($part.ContentType) {
+            $part.ContentType
+        }
+        elseif ($part.Content -is [System.Xml.XmlDocument]) {
+            "application/xml"
+        }
+        else {
+            "text/plain"
+        }
+        $lines += "--$boundary"
+        $lines += "Content-Type: $contentType"
+        if ($part.Port) {
+            $lines += "X-Port: $($part.Port)"
+        }
+        $lines += ""
+        $lines += $content
+    }
+    $lines += "--$boundary--"
+    $message = $lines -join "`n"
+    if ($Path) {
+        Set-Content -Path $Path -Value $message -Encoding UTF8
+        return $Path
+    }
+    return $message
+}
+
 #region MimeContent Wrapper Class
 # Define a .NET class to wrap content when MIME type doesn't map to native types
 if (-not ('PowerXML.MimeContent' -as [type])) {

@@ -11,3 +11,4 @@ Export-ModuleMember -Function Unregister-Namespace
 Export-ModuleMember -Function Get-Namespace
 Export-ModuleMember -Function ConvertTo-XmlConfig
 Export-ModuleMember -Function Get-MorganaAutoConfig
+Export-ModuleMember -Function ConvertTo-MimeMultipart

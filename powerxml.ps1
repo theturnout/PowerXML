@@ -320,6 +320,8 @@ Merges the STDOUT and STDERR of the processor into a single stream. Default is t
 A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g. @{ pre = "http://example.com/pre" }. Merged with the session-scoped registry (see Register-Namespace); explicit entries here take precedence.
 .PARAMETER Configuration
 Either a path to a processor configuration file, or a hashtable of configuration settings (1-1 with the engine's XML/JSON shape). Hashtables are merged over MorganaXProc's auto-detected defaults; when omitted, the defaults are injected automatically.
+.PARAMETER MultiplexOutput
+XProc only. When set, all outputs (STDOUT documents plus any bound output ports) are additionally written to this file as a multipart/mixed message with an X-Port header per part, suitable for feeding back as input. STDOUT documents are labeled with the conventional "result" port.
 #>
 function Transform-Xml {
     [CmdletBinding(DefaultParameterSetName = "Pipeline")]
@@ -345,11 +347,15 @@ function Transform-Xml {
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
         $Configuration,
-        [switch]$CollectOutput
+        [switch]$CollectOutput,
+        [string]$MultiplexOutput
     )
     
     if ($PSCmdlet.ParameterSetName -eq "Step" -and $Processing -ne "xproc") {
         throw "-Step is only supported for XProc processing. Use -Pipeline to run XSLT stylesheets."
+    }
+    if ($MultiplexOutput -and $Processing -ne "xproc") {
+        throw "-MultiplexOutput is only supported for XProc processing."
     }
 
     $pipelinePath = $null
@@ -420,6 +426,49 @@ function Transform-Xml {
         }
         $OutPort = @{ $portName = $OutPort }
     }
+    # Multipart/mixed input files are parsed and their parts routed to ports by
+    # their X-Port headers; parts without an X-Port go to the port the file was
+    # bound to (#35)
+    if ($InPort) {
+        $expandedInPort = @{}
+        foreach ($key in @($InPort.Keys)) {
+            $val = $InPort[$key]
+            $candidate = if ($val -is [string]) { $val } else { $null }
+            $isMime = $false
+            $boundary = $null
+            if ($candidate -and (Test-Path $candidate -PathType Leaf)) {
+                $firstLine = (Get-Content -Path $candidate -TotalCount 1 -ErrorAction SilentlyContinue)
+                if ($firstLine -and $firstLine.Trim().StartsWith("--")) {
+                    # Strip exactly the leading "--" delimiter; the boundary itself
+                    # may legitimately begin with dashes
+                    $boundary = $firstLine.Trim().Substring(2)
+                    $mimeString = Get-Content -Path $candidate -Raw
+                    # Confirm it is really a multipart message via the end marker
+                    $isMime = $mimeString.Contains("--$boundary--")
+                }
+            }
+            if ($isMime) {
+                foreach ($mimePart in @(Parse-MimeMultipart -MimeString $mimeString -Boundary $boundary)) {
+                    $partPort = if ($mimePart.Headers["X-Port"]) { $mimePart.Headers["X-Port"] } else { $key }
+                    $contentType = $mimePart.Headers["Content-Type"]
+                    $extension = if ($contentType -and ($contentType -like "application/xml" -or $contentType -like "*+xml")) { ".xml" } else { ".txt" }
+                    $partFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, $extension)
+                    Set-Content -Path $partFile -Value $mimePart.Content -Encoding UTF8
+                    if ($expandedInPort.ContainsKey($partPort)) {
+                        $existing = $expandedInPort[$partPort]
+                        $expandedInPort[$partPort] = if ($existing -is [array]) { $existing + $partFile } else { @($existing, $partFile) }
+                    }
+                    else {
+                        $expandedInPort[$partPort] = $partFile
+                    }
+                }
+            }
+            else {
+                $expandedInPort[$key] = $val
+            }
+        }
+        $InPort = $expandedInPort
+    }
     
     $inPortProcessed = $null
     if ($InPort) {
@@ -458,8 +507,9 @@ function Transform-Xml {
             $compositionParams.ValidateSbom = $true
         }
         [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
+        $result = $null
         if ($Processor -eq "xmlcalabash") {
-            return Invoke-XmlCalabash `
+            $result = Invoke-XmlCalabash `
                 -Paths $Paths `
                 -InputObject $InputObject `
                 -Step $stepQName `
@@ -484,7 +534,7 @@ function Transform-Xml {
                     -OutPort $OutPort
             }
             try {
-                return Invoke-MorganaXProc `
+                $result = Invoke-MorganaXProc `
                     -Paths $Paths `
                     -InputObject $InputObject `
                     -Pipeline $morganaPipelinePath `
@@ -508,6 +558,28 @@ function Transform-Xml {
         else {
             throw "Unsupported processor $Processor for processing type $Processing"
         }
+
+        # Collect all outputs (STDOUT plus bound output ports) into one
+        # multipart/mixed file with X-Port headers per part (#35)
+        if ($MultiplexOutput) {
+            $parts = @()
+            foreach ($doc in @($result)) {
+                $parts += @{ Port = "result"; Content = $doc }
+            }
+            if ($OutPort) {
+                foreach ($key in @($OutPort.Keys)) {
+                    $filePath = $OutPort[$key]
+                    if ($filePath -is [string] -and (Test-Path $filePath -PathType Leaf)) {
+                        $fileContent = Get-Content -Path $filePath -Raw
+                        foreach ($doc in @($fileContent | Get-MultiXmlDocuments)) {
+                            $parts += @{ Port = $key; Content = $doc }
+                        }
+                    }
+                }
+            }
+            ConvertTo-MimeMultipart -Parts $parts -Path $MultiplexOutput | Out-Null
+        }
+        return $result
     }
     elseif ($Processing -eq "xslt") {
         # For XSLT processing:

@@ -211,6 +211,40 @@ Dotless i: ı.
 }
 
 # MIME Torture Test Suite based on Ryan Finnie's MIME Torture Test v1.0
+Describe "ConvertTo-MimeMultipart" {
+    It "Should round-trip through Parse-MimeMultipart" {
+        $message = ConvertTo-MimeMultipart -Parts @(
+            @{ Port = "source"; Content = "<a>1</a>" },
+            @{ Port = "stylesheet"; Content = ([xml]"<b>2</b>") }
+        )
+        $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
+        $parts = @(Parse-MimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts.Count | Should -Be 2
+        $parts[0].Headers["X-Port"] | Should -Be "source"
+        $parts[0].Headers["Content-Type"] | Should -Be "text/plain"
+        $parts[0].Content | Should -Be "<a>1</a>"
+        $parts[1].Headers["X-Port"] | Should -Be "stylesheet"
+        $parts[1].Headers["Content-Type"] | Should -Be "application/xml"
+        $parts[1].Content | Should -Be "<b>2</b>"
+    }
+
+    It "Should write to a file when -Path is given" {
+        $mimePath = Join-Path $TestDrive "written.mime"
+        $returned = ConvertTo-MimeMultipart -Path $mimePath -Parts @(
+            @{ Port = "result"; Content = "<r>text</r>" }
+        )
+
+        $returned | Should -Be $mimePath
+        Test-Path $mimePath | Should -Be $true
+        $message = Get-Content -Path $mimePath -Raw
+        $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
+        $parts = @(Parse-MimeMultipart -MimeString $message -Boundary $boundary)
+        $parts[0].Headers["X-Port"] | Should -Be "result"
+        $parts[0].Content | Should -Be "<r>text</r>"
+    }
+}
+
 Describe "MIME Torture Test - Parse-MimeMultipart" {
     BeforeAll {
         $script:tortureTestPath = "$PSScriptRoot/test_data/rf-mime-torture-test-1.0.mbox.txt"

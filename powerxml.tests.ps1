@@ -601,6 +601,92 @@ Describe 'Input resolution' {
     }
 }
 
+Describe 'Multipart MIME' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    BeforeEach {
+        # An XSLT 3.0 stylesheet that echoes the order id (works on both engines)
+        $script:RoutedXsl = Join-Path $TestDrive "routed.xsl"
+        Set-Content -Path $script:RoutedXsl -Value @'
+<xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:template match="/"><routed><xsl:value-of select="/order/@id"/></routed></xsl:template>
+</xsl:stylesheet>
+'@
+    }
+
+    Context "Run multipart input for each XProc processor" -ForEach @(
+        @{Name = "xmlcalabash" },
+        @{Name = "morganaxproc" }
+    ) {
+        It "$($_.Name) - Should route MIME parts to ports by X-Port header" {
+            $mimePath = Join-Path $TestDrive "routed.mime"
+            ConvertTo-MimeMultipart -Path $mimePath -Parts @(
+                @{ Port = "source"; ContentType = "application/xml"; Content = ([xml](Get-Content "$PSScriptRoot/test_data/order.xml" -Raw)) },
+                @{ Port = "stylesheet"; ContentType = "application/xml"; Content = ([xml](Get-Content $script:RoutedXsl -Raw)) }
+            ) | Out-Null
+
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+                -Step "p:xslt" -InPort @{ source = $mimePath }
+
+            $resultText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
+            $resultText | Should -BeLike "*routed*"
+            $resultText | Should -BeLike "*ORD-001*"
+        }
+
+        It "$($_.Name) - Should bind parts without X-Port to the bound port as a sequence" {
+            $mimePath = Join-Path $TestDrive "sequence.mime"
+            ConvertTo-MimeMultipart -Path $mimePath -Parts @(
+                @{ ContentType = "application/xml"; Content = "<root><message>SeqMime1</message></root>" },
+                @{ ContentType = "application/xml"; Content = "<root><message>SeqMime2</message></root>" }
+            ) | Out-Null
+
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+                -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = $mimePath }
+
+            @($result).Count | Should -Be 2
+            $sequenceText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
+            $sequenceText | Should -BeLike "*SeqMime1*"
+            $sequenceText | Should -BeLike "*SeqMime2*"
+        }
+
+        It "$($_.Name) - Should write all outputs to a multiplex file with X-Port headers" {
+            $mimeOut = Join-Path $TestDrive "out.mime"
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+                -Step "p:xslt" `
+                -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $script:RoutedXsl } `
+                -MultiplexOutput $mimeOut
+
+            $result | Should -BeLike "*routed*"
+            Test-Path $mimeOut | Should -Be $true
+            $message = Get-Content -Path $mimeOut -Raw
+            $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
+            $parts = @(Parse-MimeMultipart -MimeString $message -Boundary $boundary)
+            $parts.Count | Should -Be 1
+            $parts[0].Headers["X-Port"] | Should -Be "result"
+            $parts[0].Content | Should -BeLike "*routed*"
+        }
+
+        It "$($_.Name) - Should round-trip a multiplex file back as input" {
+            $mimeOut = Join-Path $TestDrive "roundtrip.mime"
+            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+                -Step "p:xslt" `
+                -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $script:RoutedXsl } `
+                -MultiplexOutput $mimeOut | Out-Null
+
+            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+                -Pipeline "$PSScriptRoot/test_data/resultpassthru.xpl" -InPort @{ result = $mimeOut }
+
+            $result | Should -BeLike "*routed*"
+        }
+    }
+
+    It 'Should throw when -MultiplexOutput is used with -Processing xslt' {
+        { Transform-Xml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" -MultiplexOutput "out.mime" } | Should -Throw "*only supported for XProc*"
+    }
+}
+
 Describe 'Morgana configuration' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking

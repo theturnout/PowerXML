@@ -24,6 +24,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 - **Port Binding** – Route multiple inputs/outputs through named ports
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
 - **Auto-Configuration** – Processor configs are auto-generated with detected defaults (Saxon connector detection, iXML connectors); override with a `-Configuration` hashtable
+- **Multipart MIME** – Multi-document inputs and outputs travel as one `multipart/mixed` file with `X-Port` port routing (`-MultiplexOutput`, auto-detected input files)
 
 ## Requirements
 
@@ -109,6 +110,7 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-Catalog` | string | XML catalog file path |
 | `-Passthrough` | array | Arguments passed directly to the processor |
 | `-PassthroughJava` | array | Arguments passed to the JVM |
+| `-MultiplexOutput` | string | XProc only: write all outputs (STDOUT + bound ports) to one multipart/mixed file with `X-Port` headers |
 
 ### Namespace Registry
 
