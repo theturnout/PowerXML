@@ -601,6 +601,87 @@ Describe 'Input resolution' {
     }
 }
 
+Describe 'Manual classpath' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    Context "Run for each XProc processor" -ForEach @(
+        @{Name = "xmlcalabash" },
+        @{Name = "morganaxproc" }
+    ) {
+        It "$($_.Name) - Should run with a caller-provided classpath and no dependency resolution" {
+            $script:PreviousPolyglotpm = $env:polyglotpm
+            $emptyRepo = Join-Path $TestDrive "empty-repo"
+            New-Item -ItemType Directory -Path $emptyRepo | Out-Null
+            $env:polyglotpm = $emptyRepo
+            try {
+                # Build the classpath from the standard test cache
+                $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else { Join-Path $env:TEMP "powerxml-test-deps" }
+                if ($_.Name -eq "xmlcalabash") {
+                    $procDir = (Get-ChildItem $deps -Directory -Filter "xmlcalabash-*" | Select-Object -First 1).FullName
+                    $cp = "$procDir\*;$procDir\lib\*;$procDir\extra\*"
+                }
+                else {
+                    # Pick a Morgana install that actually contains the engine jar
+                    # (the cache may hold partial/phantom downloads)
+                    $procDir = (Get-ChildItem $deps -Directory -Filter "morganaxproc-IIIse*" |
+                        Where-Object { Test-Path (Join-Path $_.FullName "MorganaXProc-IIIse.jar") } |
+                        Select-Object -First 1).FullName
+                    $libDir = (Get-ChildItem $procDir -Directory -Filter "*lib*" | Select-Object -First 1).FullName
+                    $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
+                }
+
+                $result = Transform-Xml -Processor $_.Name -ClassPath $cp -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+
+                $resultText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
+                $resultText | Should -BeLike "*ORD-001*"
+                # Nothing was resolved or downloaded into the repository
+                (Get-ChildItem $emptyRepo | Measure-Object).Count | Should -Be 0
+            }
+            finally {
+                $env:polyglotpm = $script:PreviousPolyglotpm
+            }
+        }
+    }
+
+    It "morganaxproc - Should pass a configuration file through with a manual classpath" {
+        $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else { Join-Path $env:TEMP "powerxml-test-deps" }
+        $procDir = (Get-ChildItem $deps -Directory -Filter "morganaxproc-IIIse*" |
+            Where-Object { Test-Path (Join-Path $_.FullName "MorganaXProc-IIIse.jar") } |
+            Select-Object -First 1).FullName
+        $libDir = (Get-ChildItem $procDir -Directory -Filter "*lib*" | Select-Object -First 1).FullName
+        $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
+        $userConfig = Join-Path $TestDrive "manual-morgana-config.xml"
+        Set-Content -Path $userConfig -Value '<?xml version="1.0" encoding="UTF-8"?><morgana-config xmlns="http://www.xml-project.com/morganaxproc"/>'
+
+        $result = Transform-Xml -Processor "morganaxproc" -ClassPath $cp -Configuration $userConfig `
+            -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+
+        $resultText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
+        $resultText | Should -BeLike "*ORD-001*"
+    }
+
+    It 'Should throw when -ClassPath is used with -Processing xslt' {
+        { Transform-Xml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" -ClassPath "foo" } | Should -Throw "*only supported for XProc*"
+    }
+
+    It 'Should skip composition resolution when -ClassPath is given' {
+        $global:CapturedPaths = $null
+        $global:CapturedClassPath = $null
+        Mock Invoke-XmlCalabash -ModuleName powerxml {
+            $global:CapturedPaths = $Paths
+            $global:CapturedClassPath = $ClassPath
+            return "ok"
+        }
+
+        Transform-Xml -Processor "xmlcalabash" -ClassPath "C:/some/jars/*" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+
+        @($global:CapturedPaths).Count | Should -Be 0
+        $global:CapturedClassPath | Should -Be "C:/some/jars/*"
+    }
+}
+
 Describe 'Multipart MIME' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking

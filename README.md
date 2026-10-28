@@ -25,6 +25,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
 - **Auto-Configuration** – Processor configs are auto-generated with detected defaults (Saxon connector detection, iXML connectors); override with a `-Configuration` hashtable
 - **Multipart MIME** – Multi-document inputs and outputs travel as one `multipart/mixed` file with `X-Port` port routing (`-MultiplexOutput`, auto-detected input files)
+- **Bring Your Own Jars** – `-ClassPath` runs XProc processors against a caller-managed Java classpath, bypassing PolyglotPM entirely
 
 ## Requirements
 
@@ -111,6 +112,7 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-Passthrough` | array | Arguments passed directly to the processor |
 | `-PassthroughJava` | array | Arguments passed to the JVM |
 | `-MultiplexOutput` | string | XProc only: write all outputs (STDOUT + bound ports) to one multipart/mixed file with `X-Port` headers |
+| `-ClassPath` | string | XProc only: a ready-made Java classpath used verbatim, bypassing PolyglotPM dependency resolution |
 
 ### Namespace Registry
 

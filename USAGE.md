@@ -248,6 +248,21 @@ Transform-Xml
 
 When a purl resolves to a directory, a file selector is required; ambiguous `filename` matches throw. Single-file artifacts are used directly. Purls that fail to resolve throw a clear error naming the purl and the expected selectors.
 
+## Running Without PolyglotPM
+
+Tools that manage their own jars (or ship a processor layout that PolyglotPM's directory conventions do not match) can pass a ready-made Java classpath with `-ClassPath` (XProc only). The classpath is used verbatim — order is preserved — and dependency resolution, processor discovery, and config generation are all bypassed:
+
+```powershell
+Transform-Xml 
+	-Processor "morganaxproc" 
+	-ClassPath "C:/tools/lib/xercesImpl.jar;C:/tools/libraries/*;C:/tools/MorganaXProc-IIIse.jar" 
+	-Configuration "C:/tools/config/morgana.xml" 
+	-Step "p:xslt" 
+	-InPort @{ source = "./input.xml"; stylesheet = "./style.xsl" }
+```
+
+Use `-PassthroughJava` for JVM options such as javaagents. When `-ClassPath` is given without `-Configuration`, no processor config is generated — supply your own if you need connectors.
+
 ## Multipart MIME
 
 Documents can travel in and out of `Transform-Xml` as a single `multipart/mixed` file, with an `X-Port` header naming the port each part belongs to.

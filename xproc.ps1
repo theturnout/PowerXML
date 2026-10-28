@@ -286,6 +286,7 @@ function Invoke-XmlCalabash {
         $InputObject,
         [string]$Step,
         $Pipeline,        
+        [string]$ClassPath,
         [hashtable]$Options,
         [hashtable]$InPort,
         [hashtable]$OutPort,
@@ -296,22 +297,29 @@ function Invoke-XmlCalabash {
         [hashtable]$Namespace,
         [switch]$CollectOutput
     )
-    # look for the xmlcalabash path
-    $processorPath = $Paths | Where-Object {
-        $_ -like "*xmlcalabash*"        
-    } | Select-Object -First 1
-    if ( -not $processorPath) {
-        throw "Could not find xmlcalabash processor in software composition paths"
+    if ($ClassPath) {
+        # The caller owns the classpath entirely; no processor discovery (#8)
+        $cp = $ClassPath
     }
-    if (-not (Test-Path $processorPath -PathType Container)) {
-        throw "XmlCalabash processor directory not found at '$processorPath'. The package cache may be corrupt - delete it and re-run."
+    else {
+        # look for the xmlcalabash path
+        $processorPath = $Paths | Where-Object {
+            $_ -like "*xmlcalabash*"        
+        } | Select-Object -First 1
+        if ( -not $processorPath) {
+            throw "Could not find xmlcalabash processor in software composition paths"
+        }
+        if (-not (Test-Path $processorPath -PathType Container)) {
+            throw "XmlCalabash processor directory not found at '$processorPath'. The package cache may be corrupt - delete it and re-run."
+        }
+
+        #construct classpath
+        $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
+        $cp = "$processorPath/*$cpDelimiter"
+
+        $cp += Get-PXClassPath -Paths $Paths -ShortenClassPath
+        $cp = "$cp$cpDelimiter$processorPath/lib/*$cpDelimiter$processorPath/extra/*"
     }
-
-    #construct classpath
-    $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    $cp = "$processorPath/*$cpDelimiter"
-
-    $cp += Get-PXClassPath -Paths $Paths -ShortenClassPath
 
     #    Get-ChildItem "$processorPath\lib" -Filter *.jar |
     #        ForEach-Object {
@@ -502,31 +510,38 @@ function Invoke-MorganaXProc {
         [bool]$MergeOutput = $true,
     [hashtable]$Namespace,
     $Configuration,
+    [string]$ClassPath,
     [switch]$CollectOutput
     )
     #$processorPath = (Join-Path $localRepository "MorganaXProc-IIIse-1.8.2")
         
-    # look for the MorganaXProc path
-    $processorPath = $Paths | Where-Object {
-        $_ -like "*MorganaXProc-IIIse*"
-    } | Select-Object -First 1
-    if ( -not $processorPath) {
-        throw "Could not find MorganaXProc processor in software composition paths"
+    if ($ClassPath) {
+        # The caller owns the classpath entirely; no processor discovery (#8)
+        $cp = $ClassPath
     }
-    #construct classpath
-    $morganaJar = Join-Path $processorPath "MorganaXProc-IIIse.jar"
-    if (-not (Test-Path $morganaJar -PathType Leaf)) {
-        throw "MorganaXProc-IIIse.jar not found at '$processorPath'. The package cache may be corrupt - delete '$processorPath' and re-run."
-    }
-    $cp = $morganaJar
-
-    $cp += Get-PXClassPath -Paths $Paths
-    
-    $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
-    Get-ChildItem "$processorPath\MorganaXProc-IIIse_lib" -Filter *.jar |
-        ForEach-Object {
-            $cp = "$cp$cpDelimiter$_"
+    else {
+        # look for the MorganaXProc path
+        $processorPath = $Paths | Where-Object {
+            $_ -like "*MorganaXProc-IIIse*"
+        } | Select-Object -First 1
+        if ( -not $processorPath) {
+            throw "Could not find MorganaXProc processor in software composition paths"
         }
+        #construct classpath
+        $morganaJar = Join-Path $processorPath "MorganaXProc-IIIse.jar"
+        if (-not (Test-Path $morganaJar -PathType Leaf)) {
+            throw "MorganaXProc-IIIse.jar not found at '$processorPath'. The package cache may be corrupt - delete '$processorPath' and re-run."
+        }
+        $cp = $morganaJar
+
+        $cp += Get-PXClassPath -Paths $Paths
+        
+        $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
+        Get-ChildItem "$processorPath\MorganaXProc-IIIse_lib" -Filter *.jar |
+            ForEach-Object {
+                $cp = "$cp$cpDelimiter$_"
+            }
+    }
         
     # Write-Verbose "ClassPath: $cp"
 
@@ -536,6 +551,11 @@ function Invoke-MorganaXProc {
     $generatedConfigPath = $null
     if ($Configuration -is [string] -and $Configuration) {
         $configArg = $Configuration
+    }
+    elseif ($ClassPath) {
+        # Manual mode: the caller owns the classpath, no config is generated (#8)
+        $configArg = $null
+        $generatedConfigPath = $null
     }
     else {
         $effectiveConfig = Get-MorganaAutoConfig -Paths $Paths

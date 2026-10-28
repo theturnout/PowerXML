@@ -322,6 +322,8 @@ A hashtable of namespace prefixes and URIs to use when processing the pipeline, 
 Either a path to a processor configuration file, or a hashtable of configuration settings (1-1 with the engine's XML/JSON shape). Hashtables are merged over MorganaXProc's auto-detected defaults; when omitted, the defaults are injected automatically.
 .PARAMETER MultiplexOutput
 XProc only. When set, all outputs (STDOUT documents plus any bound output ports) are additionally written to this file as a multipart/mixed message with an X-Port header per part, suitable for feeding back as input. STDOUT documents are labeled with the conventional "result" port.
+.PARAMETER ClassPath
+XProc only. A ready-made Java classpath used verbatim (order preserved), bypassing PolyglotPM dependency resolution and processor discovery entirely — for tools that manage their own jars. Use -PassthroughJava for JVM options such as javaagents and -Configuration to supply a processor config file. When -ClassPath is given without -Configuration, no config is generated.
 #>
 function Transform-Xml {
     [CmdletBinding(DefaultParameterSetName = "Pipeline")]
@@ -348,7 +350,8 @@ function Transform-Xml {
         [hashtable]$Namespace,
         $Configuration,
         [switch]$CollectOutput,
-        [string]$MultiplexOutput
+        [string]$MultiplexOutput,
+        [string]$ClassPath
     )
     
     if ($PSCmdlet.ParameterSetName -eq "Step" -and $Processing -ne "xproc") {
@@ -356,6 +359,9 @@ function Transform-Xml {
     }
     if ($MultiplexOutput -and $Processing -ne "xproc") {
         throw "-MultiplexOutput is only supported for XProc processing."
+    }
+    if ($ClassPath -and $Processing -ne "xproc") {
+        throw "-ClassPath is only supported for XProc processing."
     }
 
     $pipelinePath = $null
@@ -506,11 +512,21 @@ function Transform-Xml {
         if ($validateSbom) {
             $compositionParams.ValidateSbom = $true
         }
-        [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
+
+        # A ready-made classpath bypasses dependency resolution and processor
+        # discovery entirely — the caller owns the jars (#8)
+        if ($ClassPath) {
+            [array]$Paths = @()
+        }
+        else {
+            [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
+        }
+
         $result = $null
         if ($Processor -eq "xmlcalabash") {
             $result = Invoke-XmlCalabash `
                 -Paths $Paths `
+                -ClassPath $ClassPath `
                 -InputObject $InputObject `
                 -Step $stepQName `
                 -Pipeline $pipelinePath `
@@ -536,6 +552,7 @@ function Transform-Xml {
             try {
                 $result = Invoke-MorganaXProc `
                     -Paths $Paths `
+                    -ClassPath $ClassPath `
                     -InputObject $InputObject `
                     -Pipeline $morganaPipelinePath `
                     -Options $Options `
