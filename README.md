@@ -126,9 +126,10 @@ Unregister-Namespace -Prefix "pre"
 
 ## Dependency Management
 
-PowerXML uses CycloneDX SBOM format (`sbom.xml`) to declare and manage Java dependencies. Dependencies are automatically downloaded from:
+PowerXML uses CycloneDX SBOM format (`sbom.xml`) to declare and manage dependencies. Dependencies are automatically downloaded from:
 
 - Maven Central
+- NuGet
 - GitHub Releases  
 - Codeberg Releases
 - SourceForge

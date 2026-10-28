@@ -10,6 +10,7 @@ Polyglot enables downloading and managing software dependencies from multiple pa
 
 - **PURL Support**: Parse and resolve Package URLs for multiple ecosystems:
   - Maven Central & custom Maven repositories
+  - NuGet
   - GitHub Releases
   - Codeberg Releases
   - SourceForge
