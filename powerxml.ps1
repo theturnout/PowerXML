@@ -21,7 +21,7 @@ The target encoding to use when writing the XML content to a temporary file. Def
 .NOTES
 Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path) will be returned as-is.
 #>
-function Resolve-XmlInput {
+function Resolve-PXXmlInput {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -41,7 +41,7 @@ function Resolve-XmlInput {
         if ($InputObject -is [array]) {
             $resolvedArray = @()
             foreach ($item in $InputObject) {
-                $resolvedArray += Resolve-XmlInput -InputObject $item `
+                $resolvedArray += Resolve-PXXmlInput -InputObject $item `
                     -Extension $Extension `
                     -TargetEncoding $TargetEncoding
             }
@@ -52,7 +52,7 @@ function Resolve-XmlInput {
         }
         elseif ($InputObject -is [string] -and $InputObject -like "pkg:*") {
             # Package URLs resolve through PolyglotPM to a local file (#31)
-            return Resolve-PurlInput -PurlString $InputObject
+            return Resolve-PXPurlInput -PurlString $InputObject
         }
         elseif ($InputObject -is [string]) {
             # try to parse the string as XML
@@ -113,7 +113,7 @@ The Package URL, e.g. "pkg:maven/org.example/lib@1.0?filename=convert.xpl".
 .OUTPUTS
 The local file path.
 #>
-function Resolve-PurlInput {
+function Resolve-PXPurlInput {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -170,7 +170,7 @@ Whether to inspect input or output ports.
 .OUTPUTS
 The port name as a string.
 #>
-function Get-PrimaryPort {
+function Get-PXPrimaryPort {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -201,21 +201,161 @@ function Get-PrimaryPort {
     }
     return $fallback
 }
-# Session-scoped namespace registry, populated by Register-Namespace and merged
-# into Transform-Xml invocations (explicit -Namespace entries take precedence)
+# Session-scoped namespace registry, populated by Register-PXNamespace and merged
+# into Transform-PXXml invocations (explicit -Namespace entries take precedence)
 $script:NamespaceRegistry = @{}
+
+# Session-scoped composition registry, populated by Register-PXComposition (#12).
+# Transform-PXXml uses the selected default composition when no -PackageResolution
+# is given, and caches resolved paths so the PolyglotPM engine runs once per
+# composition instead of on every call
+$script:PXCompositionRegistry = @{}
+$script:PXPDefaultComposition = $null
+
+<#
+.SYNOPSIS
+Registers a named software composition for the session.
+.DESCRIPTION
+Stores the composition's resolution settings under a session-scoped name for use
+by Transform-PXXml (via Select-PXComposition). The composition is resolved
+through PolyglotPM on first use and the resolved paths are cached for subsequent
+calls. Re-register to refresh a cached composition (relevant with -GetLatest).
+.PARAMETER Name
+The session-scoped composition name.
+.PARAMETER TargetComposition
+The composition in the SBOM to resolve. Defaults to the first composition.
+.PARAMETER SbomPath
+Path to a CycloneDX SBOM XML file. Defaults to the bundled sbom.xml.
+.PARAMETER GetLatest
+Resolves the latest version for supported package types.
+.PARAMETER AdditionalPackages
+Purl strings merged into the SBOM before resolution.
+.PARAMETER ValidateSbom
+Runs XSD schema validation when loading the SBOM.
+#>
+function Register-PXComposition {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidatePattern("^[A-Za-z_][\w.-]*$")]
+        [string]$Name,
+        [string]$TargetComposition,
+        [string]$SbomPath,
+        [switch]$GetLatest,
+        [string[]]$AdditionalPackages,
+        [switch]$ValidateSbom
+    )
+    if ($script:PXCompositionRegistry.ContainsKey($Name)) {
+        Write-Warning "Composition '$Name' is already registered; overwriting."
+    }
+    $resolution = @{}
+    if ($SbomPath) { $resolution.SbomPath = $SbomPath }
+    if ($TargetComposition) { $resolution.TargetComposition = $TargetComposition }
+    if ($GetLatest) { $resolution.GetLatest = $true }
+    if ($AdditionalPackages) { $resolution.AdditionalPackages = @($AdditionalPackages) }
+    if ($ValidateSbom) { $resolution.ValidateSbom = $true }
+    $script:PXCompositionRegistry[$Name] = @{
+        Resolution = $resolution
+        Paths      = $null
+    }
+}
+
+<#
+.SYNOPSIS
+Removes registered software compositions from the session.
+.DESCRIPTION
+Unregisters one or more named compositions. Unknown names are ignored (a verbose
+message is written). Removing the selected default clears that selection.
+#>
+function Unregister-PXComposition {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
+        [string[]]$Name
+    )
+    process {
+        foreach ($compositionName in $Name) {
+            if ($script:PXCompositionRegistry.ContainsKey($compositionName)) {
+                $script:PXCompositionRegistry.Remove($compositionName)
+                if ($script:PXPDefaultComposition -eq $compositionName) {
+                    $script:PXPDefaultComposition = $null
+                }
+            }
+            else {
+                Write-Verbose "Composition '$compositionName' was not registered."
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Gets the software compositions registered for the session.
+.PARAMETER Name
+Optional name filter. When omitted, all registered compositions are returned.
+.OUTPUTS
+One object per registered composition with Name, TargetComposition, SbomPath,
+GetLatest, AdditionalPackages, ValidateSbom, Resolved, and Paths properties.
+#>
+function Get-PXComposition {
+    [CmdletBinding()]
+    param(
+        [string]$Name
+    )
+    $keys = if ($Name) {
+        @($script:PXCompositionRegistry.Keys | Where-Object { $_ -eq $Name })
+    }
+    else {
+        @($script:PXCompositionRegistry.Keys)
+    }
+    foreach ($key in ($keys | Sort-Object)) {
+        $entry = $script:PXCompositionRegistry[$key]
+        [PSCustomObject]@{
+            Name               = $key
+            TargetComposition  = $entry.Resolution.TargetComposition
+            SbomPath           = $entry.Resolution.SbomPath
+            GetLatest          = [bool]$entry.Resolution.GetLatest
+            AdditionalPackages = $entry.Resolution.AdditionalPackages
+            ValidateSbom       = [bool]$entry.Resolution.ValidateSbom
+            Resolved           = ($null -ne $entry.Paths)
+            Paths              = $entry.Paths
+            IsDefault          = ($script:PXPDefaultComposition -eq $key)
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+Selects the default software composition for the session.
+.DESCRIPTION
+Sets the registered composition used by Transform-PXXml when no -PackageResolution
+is given. Explicit -PackageResolution entries always take precedence.
+.PARAMETER Name
+The registered composition to select.
+#>
+function Select-PXComposition {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+    if (-not $script:PXCompositionRegistry.ContainsKey($Name)) {
+        throw "Composition '$Name' is not registered. Register it with Register-PXComposition first."
+    }
+    $script:PXPDefaultComposition = $Name
+}
 
 <#
 .SYNOPSIS
 Registers a namespace prefix for the session.
 .DESCRIPTION
-Adds a prefix-to-URI mapping to the session-scoped registry. Transform-Xml merges the registry with its -Namespace parameter (explicit parameter entries take precedence) when invoking XProc processors.
+Adds a prefix-to-URI mapping to the session-scoped registry. Transform-PXXml merges the registry with its -Namespace parameter (explicit parameter entries take precedence) when invoking XProc processors.
 .PARAMETER Prefix
 The namespace prefix, e.g. "pre" for use with namespaced options like "pre:opt".
 .PARAMETER Uri
 The namespace URI the prefix maps to.
 #>
-function Register-Namespace {
+function Register-PXNamespace {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -234,11 +374,11 @@ function Register-Namespace {
 .SYNOPSIS
 Removes namespace prefixes from the session registry.
 .DESCRIPTION
-Unregisters one or more prefixes. Unknown prefixes are ignored (a verbose message is written). Accepts pipeline input from Get-Namespace.
+Unregisters one or more prefixes. Unknown prefixes are ignored (a verbose message is written). Accepts pipeline input from Get-PXNamespace.
 .PARAMETER Prefix
 The namespace prefix(es) to remove.
 #>
-function Unregister-Namespace {
+function Unregister-PXNamespace {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
@@ -267,7 +407,7 @@ Optional prefix filter. When omitted, all registered prefixes are returned.
 .OUTPUTS
 One object per registered prefix with Prefix and Uri properties.
 #>
-function Get-Namespace {
+function Get-PXNamespace {
     [CmdletBinding()]
     param(
         [string]$Prefix
@@ -317,7 +457,7 @@ An array of parameters passed directly to the Java JVM.
 .PARAMETER MergeOutput
 Merges the STDOUT and STDERR of the processor into a single stream. Default is true.
 .PARAMETER Namespace
-A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g. @{ pre = "http://example.com/pre" }. Merged with the session-scoped registry (see Register-Namespace); explicit entries here take precedence.
+A hashtable of namespace prefixes and URIs to use when processing the pipeline, e.g. @{ pre = "http://example.com/pre" }. Merged with the session-scoped registry (see Register-PXNamespace); explicit entries here take precedence.
 .PARAMETER Configuration
 Either a path to a processor configuration file, or a hashtable of configuration settings (1-1 with the engine's XML/JSON shape). Hashtables are merged over MorganaXProc's auto-detected defaults; when omitted, the defaults are injected automatically.
 .PARAMETER MultiplexOutput
@@ -325,7 +465,7 @@ XProc only. When set, all outputs (STDOUT documents plus any bound output ports)
 .PARAMETER ClassPath
 XProc only. A ready-made Java classpath used verbatim (order preserved), bypassing PolyglotPM dependency resolution and processor discovery entirely — for tools that manage their own jars. Use -PassthroughJava for JVM options such as javaagents and -Configuration to supply a processor config file. When -ClassPath is given without -Configuration, no config is generated.
 #>
-function Transform-Xml {
+function Transform-PXXml {
     [CmdletBinding(DefaultParameterSetName = "Pipeline")]
     param(
         [Parameter(ValueFromPipeline = $true)]
@@ -366,12 +506,12 @@ function Transform-Xml {
 
     $pipelinePath = $null
     if ($PSCmdlet.ParameterSetName -eq "Pipeline") {
-        $pipelinePath = Resolve-XmlInput -InputObject $Pipeline -Extension "xpl"
+        $pipelinePath = Resolve-PXXmlInput -InputObject $Pipeline -Extension "xpl"
     }
 
-    # Merge the session-scoped namespace registry (Register-Namespace) with the
+    # Merge the session-scoped namespace registry (Register-PXNamespace) with the
     # -Namespace parameter; explicit parameter entries take precedence
-    $registeredNamespaces = @(Get-Namespace)
+    $registeredNamespaces = @(Get-PXNamespace)
     $effectiveNamespace = $null
     if ($Namespace -or $registeredNamespaces.Count -gt 0) {
         $effectiveNamespace = @{}
@@ -405,7 +545,7 @@ function Transform-Xml {
                 $null
             }
             if (-not $prefixUri) {
-                throw "Step namespace prefix '$stepPrefix' is not bound. Register it with Register-Namespace or pass -Namespace."
+                throw "Step namespace prefix '$stepPrefix' is not bound. Register it with Register-PXNamespace or pass -Namespace."
             }
             $stepQName = $Step
         }
@@ -416,7 +556,7 @@ function Transform-Xml {
     # to the conventional ports since there is no pipeline to introspect.
     if ($null -ne $InPort -and $InPort -isnot [hashtable] -and $InPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($InPort).Count -gt 0) {
         $portName = if ($Processing -eq "xproc") {
-            if ($stepQName) { "source" } else { Get-PrimaryPort -PipelinePath $pipelinePath -Direction Input }
+            if ($stepQName) { "source" } else { Get-PXPrimaryPort -PipelinePath $pipelinePath -Direction Input }
         }
         else {
             "source"
@@ -425,7 +565,7 @@ function Transform-Xml {
     }
     if ($null -ne $OutPort -and $OutPort -isnot [hashtable] -and $OutPort -isnot [System.Collections.Specialized.OrderedDictionary] -and @($OutPort).Count -gt 0) {
         $portName = if ($Processing -eq "xproc") {
-            if ($stepQName) { "result" } else { Get-PrimaryPort -PipelinePath $pipelinePath -Direction Output }
+            if ($stepQName) { "result" } else { Get-PXPrimaryPort -PipelinePath $pipelinePath -Direction Output }
         }
         else {
             "result"
@@ -454,7 +594,7 @@ function Transform-Xml {
                 }
             }
             if ($isMime) {
-                foreach ($mimePart in @(Parse-MimeMultipart -MimeString $mimeString -Boundary $boundary)) {
+                foreach ($mimePart in @(Parse-PXMimeMultipart -MimeString $mimeString -Boundary $boundary)) {
                     $partPort = if ($mimePart.Headers["X-Port"]) { $mimePart.Headers["X-Port"] } else { $key }
                     $contentType = $mimePart.Headers["Content-Type"]
                     $extension = if ($contentType -and ($contentType -like "application/xml" -or $contentType -like "*+xml")) { ".xml" } else { ".txt" }
@@ -481,37 +621,11 @@ function Transform-Xml {
         $inPortProcessed = @{}
         foreach ($key in $InPort.Keys) {
             $val = $InPort[$key]
-            $inPortProcessed[$key] = Resolve-XmlInput -InputObject $val -Extension "xml"
+            $inPortProcessed[$key] = Resolve-PXXmlInput -InputObject $val -Extension "xml"
         }
     }
     if ($Processing -eq "xproc") {
         $localRepository = Get-LocalRepositoryPath
-        # Unpack PackageResolution settings with defaults
-        $sbomPath = if ($PackageResolution -and $PackageResolution.SbomPath) { $PackageResolution.SbomPath } else { "$PSScriptRoot\sbom.xml" }
-        $targetComposition = if ($PackageResolution) { $PackageResolution.TargetComposition } else { $null }
-        $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
-        $additionalPackages = if ($PackageResolution -and $PackageResolution.AdditionalPackages) {
-            @($PackageResolution.AdditionalPackages)
-        }
-        else { $null }
-        $validateSbom = if ($PackageResolution) { [bool]$PackageResolution.ValidateSbom } else { $false }
-
-        $compositionParams = @{
-            SbomPath        = $sbomPath
-            LocalRepository = $localRepository
-        }
-        if ($targetComposition) {
-            $compositionParams.TargetComposition = $targetComposition
-        }
-        if ($getLatest) {
-            $compositionParams.GetLatest = $true
-        }
-        if ($additionalPackages) {
-            $compositionParams.AdditionalPackages = $additionalPackages
-        }
-        if ($validateSbom) {
-            $compositionParams.ValidateSbom = $true
-        }
 
         # A ready-made classpath bypasses dependency resolution and processor
         # discovery entirely — the caller owns the jars (#8)
@@ -519,7 +633,53 @@ function Transform-Xml {
             [array]$Paths = @()
         }
         else {
-            [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique    
+            # Effective resolution (#12): explicit -PackageResolution wins, then the
+            # session default composition (Select-PXComposition), then bundled defaults.
+            # Registered compositions resolve once and cache their paths.
+            $effectiveResolution = $PackageResolution
+            $registryEntry = $null
+            if (-not $effectiveResolution -and $script:PXPDefaultComposition) {
+                $registryEntry = $script:PXCompositionRegistry[$script:PXPDefaultComposition]
+                if ($registryEntry) {
+                    $effectiveResolution = $registryEntry.Resolution
+                }
+            }
+
+            if ($registryEntry -and $registryEntry.Paths) {
+                [array]$Paths = $registryEntry.Paths
+            }
+            else {
+                $sbomPath = if ($effectiveResolution -and $effectiveResolution.SbomPath) { $effectiveResolution.SbomPath } else { "$PSScriptRoot\sbom.xml" }
+                $targetComposition = if ($effectiveResolution) { $effectiveResolution.TargetComposition } else { $null }
+                $getLatest = if ($effectiveResolution) { [bool]$effectiveResolution.GetLatest } else { $false }
+                $additionalPackages = if ($effectiveResolution -and $effectiveResolution.AdditionalPackages) {
+                    @($effectiveResolution.AdditionalPackages)
+                }
+                else { $null }
+                $validateSbom = if ($effectiveResolution) { [bool]$effectiveResolution.ValidateSbom } else { $false }
+
+                $compositionParams = @{
+                    SbomPath        = $sbomPath
+                    LocalRepository = $localRepository
+                }
+                if ($targetComposition) {
+                    $compositionParams.TargetComposition = $targetComposition
+                }
+                if ($getLatest) {
+                    $compositionParams.GetLatest = $true
+                }
+                if ($additionalPackages) {
+                    $compositionParams.AdditionalPackages = $additionalPackages
+                }
+                if ($validateSbom) {
+                    $compositionParams.ValidateSbom = $true
+                }
+
+                [array]$Paths = Copy-SoftwareComposition @compositionParams | Select-Object -Unique
+                if ($registryEntry) {
+                    $registryEntry.Paths = $Paths
+                }
+            }
         }
 
         $result = $null
@@ -544,7 +704,7 @@ function Transform-Xml {
             # MorganaXProc has no step-run CLI: synthesize a wrapper pipeline (#9)
             $morganaPipelinePath = $pipelinePath
             if ($stepQName) {
-                $morganaPipelinePath = New-StepShell -Step $stepQName `
+                $morganaPipelinePath = New-PXStepShell -Step $stepQName `
                     -Namespaces $effectiveNamespace `
                     -InPort $inPortProcessed `
                     -OutPort $OutPort
@@ -588,13 +748,13 @@ function Transform-Xml {
                     $filePath = $OutPort[$key]
                     if ($filePath -is [string] -and (Test-Path $filePath -PathType Leaf)) {
                         $fileContent = Get-Content -Path $filePath -Raw
-                        foreach ($doc in @($fileContent | Get-MultiXmlDocuments)) {
+                        foreach ($doc in @($fileContent | Get-PXMultiXmlDocuments)) {
                             $parts += @{ Port = $key; Content = $doc }
                         }
                     }
                 }
             }
-            ConvertTo-MimeMultipart -Parts $parts -Path $MultiplexOutput | Out-Null
+            ConvertTo-PXMimeMultipart -Parts $parts -Path $MultiplexOutput | Out-Null
         }
         return $result
     }
@@ -605,7 +765,7 @@ function Transform-Xml {
         # - outPort with 'result' key is the output file (optional)
         # - options are XSLT parameters
         
-        $stylesheetPath = Resolve-XmlInput -InputObject $Pipeline -Extension "xsl"
+        $stylesheetPath = Resolve-PXXmlInput -InputObject $Pipeline -Extension "xsl"
         
         # Get input XML from inPort 'source' key, or use first value
         $inputXmlPath = $null

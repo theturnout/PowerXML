@@ -18,7 +18,8 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 
 ## Features
 
-- **Unified API** – Single `Transform-Xml` CmdLet supports both XProc and XSLT processing
+- **Unified API** – Single `Transform-PXXml` CmdLet supports both XProc and XSLT processing
+- **Composition Registry** – Register, select, and inspect software compositions per session; resolved paths are cached so PolyglotPM runs once per composition instead of on every call
 - **Direct Step Execution** – Run a single XProc step (e.g. `-Step "p:xslt"`) without writing a pipeline; XML Calabash runs steps natively, MorganaXProc uses a synthesized wrapper
 - **Flexible Input** – Accept file paths, URIs, Package URLs, XML strings, or .NET XML objects as input
 - **Port Binding** – Route multiple inputs/outputs through named ports
@@ -50,15 +51,15 @@ Future releases will be available via package manager.
 
 ```powershell
 # Run a simple XProc pipeline
-Transform-Xml -Pipeline "./test_data/helloWorld.xpl"
+Transform-PXXml -Pipeline "./test_data/helloWorld.xpl"
 
 # With input and output ports
-Transform-Xml -Pipeline "./test_data/xmlpassthru.xpl" `
+Transform-PXXml -Pipeline "./test_data/xmlpassthru.xpl" `
     -InPort @{ source = "./test_data/order.xml" } `
     -OutPort @{ result = "./test_data/out/order-total.out.xml" }
 
 # Pass options to the pipeline
-Transform-Xml -Pipeline "./test_data/optionalHelloWorld.xpl" `
+Transform-PXXml -Pipeline "./test_data/optionalHelloWorld.xpl" `
     -Options @{ name = "World" }
 ```
 
@@ -66,12 +67,12 @@ Transform-Xml -Pipeline "./test_data/optionalHelloWorld.xpl" `
 
 ```powershell
 # Using .NET XSLT processor
-Transform-Xml -Processing "xslt" -Processor "dotnet" `
+Transform-PXXml -Processing "xslt" -Processor "dotnet" `
     -Pipeline "./test_data/hello.xsl" `
     -InPort @{ source = "./test_data/order.xml" }
 
 # Using MSXML (Windows)
-Transform-Xml -Processing "xslt" -Processor "msxml" `
+Transform-PXXml -Processing "xslt" -Processor "msxml" `
     -Pipeline "./test_data/hello.xsl" `
     -InPort @{ source = "./test_data/order.xml" } `
     -OutPort @{ result = "./test_data/out/hello.out.xml" }
@@ -82,20 +83,20 @@ Transform-Xml -Processing "xslt" -Processor "msxml" `
 ```powershell
 # Pass .NET XML object as pipeline
 [xml]$pipeline = Get-Content "./test_data/helloWorld.xpl" -Raw
-Transform-Xml -Pipeline $pipeline
+Transform-PXXml -Pipeline $pipeline
 
 # Pass XML string as input
 $xmlInput = "<root><item>Hello</item></root>"
-Transform-Xml -Pipeline "./test_data/xmlpassthru.xpl" `
+Transform-PXXml -Pipeline "./test_data/xmlpassthru.xpl" `
     -InPort @{ source = $xmlInput }
 ```
 See [USAGE.md](USAGE.md) for more examples and advanced usage scenarios.
 
 ## API Reference
 
-### Transform-Xml
+### Transform-PXXml
 
-Main function for XML transformations. Full documentation available via `Get-Help Transform-Xml`.
+Main function for XML transformations. Full documentation available via `Get-Help Transform-PXXml`.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -106,7 +107,7 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-InPort` | hashtable/string/xml | Input port bindings: `@{ portName = "./test_data/order.xml" }`; a single value binds to the pipeline's primary input port |
 | `-OutPort` | hashtable/string | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }`; a single value binds to the pipeline's primary output port |
 | `-Options` | hashtable | Pipeline options/parameters |
-| `-TargetComposition` | string | SBOM composition for dependency resolution |
+| `-PackageResolution` | hashtable | Dependency resolution settings: `SbomPath`, `TargetComposition`, `GetLatest`, `AdditionalPackages`, `ValidateSbom`; when omitted, the session default composition (see `Select-PXComposition`) is used |
 | `-Namespace` | hashtable | Namespace bindings: `@{ prefix = "uri" }` |
 | `-Catalog` | string | XML catalog file path |
 | `-Passthrough` | array | Arguments passed directly to the processor |
@@ -114,14 +115,25 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-MultiplexOutput` | string | XProc only: write all outputs (STDOUT + bound ports) to one multipart/mixed file with `X-Port` headers |
 | `-ClassPath` | string | XProc only: a ready-made Java classpath used verbatim, bypassing PolyglotPM dependency resolution |
 
-### Namespace Registry
+### Composition Registry
 
-Session-scoped namespace declarations, merged into every `Transform-Xml` XProc invocation (explicit `-Namespace` entries take precedence):
+Session-scoped software compositions, used by `Transform-PXXml` when no `-PackageResolution` is given (explicit entries take precedence). Compositions resolve once and cache their paths:
 
 ```powershell
-Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
-Get-Namespace
-Unregister-Namespace -Prefix "pre"
+Register-PXComposition -Name "my-tests" -TargetComposition "pester-tests"
+Select-PXComposition -Name "my-tests"
+Get-PXComposition
+Unregister-PXComposition -Name "my-tests"
+```
+
+### Namespace Registry
+
+Session-scoped namespace declarations, merged into every `Transform-PXXml` XProc invocation (explicit `-Namespace` entries take precedence):
+
+```powershell
+Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
+Get-PXNamespace
+Unregister-PXNamespace -Prefix "pre"
 ```
 
 ## Dependency Management
@@ -153,7 +165,7 @@ The SBOM defines named "compositions" that group dependencies for specific use c
 Use the `-TargetComposition` parameter to select a composition:
 
 ```powershell
-Transform-Xml -Pipeline "./test_data/helloWorld.xpl" -TargetComposition "pester-tests"
+Transform-PXXml -Pipeline "./test_data/helloWorld.xpl" -TargetComposition "pester-tests"
 ```
 
 ### Validating Compositions
@@ -170,7 +182,7 @@ Test-Composition -SbomPath "./sbom.xml" -TargetComposition "pester-tests"
 PowerXML/
 ├── powerxml.psm1       # Module definition
 ├── powerxml.psd1       # Module manifest
-├── powerxml.ps1        # Core Transform-Xml function
+├── powerxml.ps1        # Core Transform-PXXml function
 ├── xproc.ps1           # XProc processor wrappers (XML Calabash, Morgana)
 ├── xslt.ps1            # XSLT processor wrappers (.NET, MSXML, Altova, xsltproc)
 ├── utilities.ps1       # MIME parsing, type conversion, helpers

@@ -1,8 +1,8 @@
 # PowerXML Usage Guide
 
-## Transform-Xml Usage Examples
+## Transform-PXXml Usage Examples
 
-The `Transform-Xml` function allows you to run XProc pipelines using different processors and input types. Below are user-friendly examples for each major piece of functionality.
+The `Transform-PXXml` function allows you to run XProc pipelines using different processors and input types. Below are user-friendly examples for each major piece of functionality.
 Note: Some snippet paths (for example `input.xml`, `output.xml`, `input1.xml`, and `input2.xml`) are illustrative; create those files or substitute equivalent paths in your environment.
 
 ---
@@ -11,7 +11,7 @@ Note: Some snippet paths (for example `input.xml`, `output.xml`, `input1.xml`, a
 
 ```powershell
 $rawXml = Get-Content "./test_data/helloWorld.xpl" -Raw
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline $rawXml
 ```
@@ -22,7 +22,7 @@ Transform-Xml
 
 ```powershell
 [xml]$xmlObj = Get-Content "./test_data/helloWorld.xpl" -Raw
-Transform-Xml 
+Transform-PXXml 
 	-Processor "morganaxproc" 
 	-Pipeline $xmlObj
 ```
@@ -30,7 +30,7 @@ Transform-Xml
 ### Pass Options to Pipeline
 
 ```powershell
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/optionalHelloWorld.xpl" 
 	-Options @{ name = "John" }
@@ -39,7 +39,7 @@ Transform-Xml
 ### Output Result to File
 
 ```powershell
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/xmlhelloWorld.xpl" 
 	-OutPort @{ result = "./output.xml" }
@@ -52,7 +52,7 @@ Transform-Xml
 ```powershell
 [xml]$xmlInput = "<?xml version='1.0' encoding='utf-8'?><root><message>Hello, World!</message></root>"
 $xmlInput.Save("./input.xml")
-Transform-Xml 
+Transform-PXXml 
 	-TargetComposition "pester-tests" 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/xmlpassthru.xpl" 
@@ -67,7 +67,7 @@ Transform-Xml
 When the pipeline has a primary input or output port, a single value can be passed directly without naming the port:
 
 ```powershell
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/xmlpassthru.xpl" 
 	-InPort "./input.xml" 
@@ -80,7 +80,7 @@ The primary port is detected from the pipeline (the `p:input`/`p:output` marked 
 
 ```powershell
 [xml]$xmlInput = "<?xml version='1.0' encoding='utf-8'?><root><message>Hello, World!</message></root>"
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/xmlpassthru.xpl" 
 	-InPort @{ "source" = $xmlInput } 
@@ -93,7 +93,7 @@ Transform-Xml
 
 ```powershell
 $namespaces = @{ pre = "http://example.com/pre" }
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/optionalHelloWorld.xpl" 
 	-Options @{ 'pre:opt' = 42 }
@@ -105,13 +105,13 @@ Instead of writing a pipeline, run a single step. Your `-InPort`/`-OutPort` keys
 
 ```powershell
 # Run p:xslt directly on XML Calabash
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Step "p:xslt" 
 	-InPort @{ source = "./input.xml"; stylesheet = "./transform.xsl" }
 
 # Unprefixed names get the p: namespace
-Transform-Xml 
+Transform-PXXml 
 	-Processor "morganaxproc" 
 	-Step "xinclude" 
 	-InPort "./input.xml"
@@ -124,9 +124,9 @@ XML Calabash runs the step natively (`run --step:`); for MorganaXProc, PowerXML 
 Namespace prefixes registered for the session are merged into every XProc invocation; explicit `-Namespace` entries take precedence over the registry:
 
 ```powershell
-Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
+Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
 
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "./test_data/optionalHelloWorld.xpl"
 ```
@@ -136,7 +136,7 @@ Transform-Xml
 When a pipeline writes XML to stdout, you can cast or assign the result directly to `[xml]` and navigate the DOM with dot notation:
 
 ```powershell
-[xml]$result = Transform-Xml `
+[xml]$result = Transform-PXXml `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlhelloWorld.xpl"
 
@@ -151,7 +151,7 @@ $result.content  # => "Hello, World!"
 Because the output is a real `XmlDocument`, you can drill into any element:
 
 ```powershell
-[xml]$info = Transform-Xml `
+[xml]$info = Transform-PXXml `
 	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/processor.xpl"
@@ -161,14 +161,14 @@ $info.supplemental."xproc-engine-name"  # => "XML Calabash"
 
 ---
 
-### Pipe an XML Object into Transform-Xml
+### Pipe an XML Object into Transform-PXXml
 
-You can pipe a .NET `[xml]` object directly into `Transform-Xml` via the PowerShell pipeline:
+You can pipe a .NET `[xml]` object directly into `Transform-PXXml` via the PowerShell pipeline:
 
 ```powershell
 [xml]$xmlInput = "<root><message>Hello, World!</message></root>"
 
-$xmlInput | Transform-Xml `
+$xmlInput | Transform-PXXml `
 	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlpassthru.xpl" `
@@ -179,13 +179,13 @@ $xmlInput | Transform-Xml `
 
 ### Document Sequences as Object Arrays
 
-When a pipeline produces multiple documents, `Transform-Xml` returns an array of `[xml]` objects. Each element is a fully navigable `XmlDocument`:
+When a pipeline produces multiple documents, `Transform-PXXml` returns an array of `[xml]` objects. Each element is a fully navigable `XmlDocument`:
 
 ```powershell
 [xml]$doc1 = "<root><message>Doc1</message></root>"
 [xml]$doc2 = "<root><message>Doc2</message></root>"
 
-$results = Transform-Xml `
+$results = Transform-PXXml `
 	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlseqpassthru.xpl" `
@@ -207,7 +207,7 @@ Since inputs and outputs are native .NET objects, you can chain transformations 
 
 ```powershell
 # Run a pipeline, then query the XML result
-$messages = Transform-Xml `
+$messages = Transform-PXXml `
 	-TargetComposition "pester-tests" `
 	-Processor "xmlcalabash" `
 	-Pipeline "./test_data/xmlseqpassthru.xpl" `
@@ -216,11 +216,11 @@ $messages = Transform-Xml `
 
 # $messages is now a string array: @("Doc1", "Doc2")
 ```
-For more details, see the module documentation or run `Get-Help Transform-Xml` in PowerShell.
+For more details, see the module documentation or run `Get-Help Transform-PXXml` in PowerShell.
 
 ## Input Resolution
 
-`Transform-Xml` accepts inputs in several forms, resolved in this order:
+`Transform-PXXml` accepts inputs in several forms, resolved in this order:
 
 - **Filesystem paths** via `-Pipeline` / `-InPort` (the default)
 - **Direct XML content** via a parameter — strings and .NET XML objects are written to a temporary file automatically
@@ -230,17 +230,17 @@ For more details, see the module documentation or run `Get-Help Transform-Xml` i
 
 ```powershell
 # A pipeline shipped inside a package, referenced by purl
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Pipeline "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip#helloWorld.xpl"
 
 # A stylesheet shipped inside a maven package, selected by filename
-Transform-Xml 
+Transform-PXXml 
 	-Processing "xslt" -Processor "dotnet" 
 	-Pipeline "pkg:maven/nist.gov/oscal-thing?filename=convert.xsl"
 
 # A file URI as input
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Step "p:identity" 
 	-InPort @{ source = "file:///C:/path/input.xml" }
@@ -253,7 +253,7 @@ When a purl resolves to a directory, a file selector is required; ambiguous `fil
 Tools that manage their own jars (or ship a processor layout that PolyglotPM's directory conventions do not match) can pass a ready-made Java classpath with `-ClassPath` (XProc only). The classpath is used verbatim — order is preserved — and dependency resolution, processor discovery, and config generation are all bypassed:
 
 ```powershell
-Transform-Xml 
+Transform-PXXml 
 	-Processor "morganaxproc" 
 	-ClassPath "C:/tools/lib/xercesImpl.jar;C:/tools/libraries/*;C:/tools/MorganaXProc-IIIse.jar" 
 	-Configuration "C:/tools/config/morgana.xml" 
@@ -265,13 +265,13 @@ Use `-PassthroughJava` for JVM options such as javaagents. When `-ClassPath` is 
 
 ## Multipart MIME
 
-Documents can travel in and out of `Transform-Xml` as a single `multipart/mixed` file, with an `X-Port` header naming the port each part belongs to.
+Documents can travel in and out of `Transform-PXXml` as a single `multipart/mixed` file, with an `X-Port` header naming the port each part belongs to.
 
 **As input** — any `-InPort` value that points at a multipart file is detected automatically: parts are parsed and routed to the ports named by their `X-Port` headers (parts without an `X-Port` go to the port the file was bound to, in order, as a sequence):
 
 ```powershell
 # routed.mime contains parts labeled X-Port: source and X-Port: stylesheet
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Step "p:xslt" 
 	-InPort @{ source = "./routed.mime" }
@@ -280,14 +280,29 @@ Transform-Xml
 **As output** — `-MultiplexOutput` writes every output (STDOUT documents plus any bound output ports) to one multipart file, STDOUT documents labeled with the conventional `result` port:
 
 ```powershell
-Transform-Xml 
+Transform-PXXml 
 	-Processor "xmlcalabash" 
 	-Step "p:xslt" 
 	-InPort @{ source = "./input.xml"; stylesheet = "./style.xsl" } 
 	-MultiplexOutput "./out.mime"
 ```
 
-Use `ConvertTo-MimeMultipart` to build such files yourself from parts with `Port`, `Content`, and `ContentType` properties. This works identically on both XProc processors (PowerXML handles the multipart format itself rather than relying on engine-specific options).
+Use `ConvertTo-PXMimeMultipart` to build such files yourself from parts with `Port`, `Content`, and `ContentType` properties. This works identically on both XProc processors (PowerXML handles the multipart format itself rather than relying on engine-specific options).
+
+## Composition Registry
+
+Register a named composition once per session and select it as the default; `Transform-PXXml` then uses it whenever no `-PackageResolution` is given, resolving it a single time and caching the resolved paths (so the PolyglotPM engine does not run on every call):
+
+```powershell
+Register-PXComposition -Name "my-work" -TargetComposition "oscal" -GetLatest
+Select-PXComposition -Name "my-work"
+
+Transform-PXXml 
+	-Processor "xmlcalabash" 
+	-Pipeline "./test_data/helloWorld.xpl"
+```
+
+Explicit `-PackageResolution` always wins over the session default. Re-register a composition to refresh its cached paths (relevant with `-GetLatest`).
 
 ## Configuration
 
@@ -297,7 +312,7 @@ Use `ConvertTo-MimeMultipart` to build such files yourself from parts with `Port
 - **A hashtable** — settings 1-1 with the engine's XML/JSON shape, merged over the auto-detected defaults (explicit entries win):
 
 ```powershell
-Transform-Xml 
+Transform-PXXml 
 	-Processor "morganaxproc" 
 	-Step "p:xslt" 
 	-InPort @{ source = "./input.xml"; stylesheet = "./style.xsl" } 
@@ -306,17 +321,17 @@ Transform-Xml
 
 - **A file path** — used as-is with no merging.
 
-Use `ConvertTo-XmlConfig` to build a config file from a hashtable yourself (keys become elements, `'@'`-prefixed keys become attributes), and `Get-MorganaAutoConfig -Paths <array>` to inspect what would be auto-detected.
+Use `ConvertTo-PXXmlConfig` to build a config file from a hashtable yourself (keys become elements, `'@'`-prefixed keys become attributes), and `Get-PXMorganaAutoConfig -Paths <array>` to inspect what would be auto-detected.
 
 ## Failure Behavior
 
-When an XProc processor exits with a non-zero code (a failed or invalid pipeline, a missing step, or a connector error), `Transform-Xml` throws with the engine's exit code and captured output instead of returning the error text as a result. Successful runs return the STDOUT documents as usual.
+When an XProc processor exits with a non-zero code (a failed or invalid pipeline, a missing step, or a connector error), `Transform-PXXml` throws with the engine's exit code and captured output instead of returning the error text as a result. Successful runs return the STDOUT documents as usual.
 
 ## Using CycloneDX SBOMs
 
-PowerXML uses the CycloneDX Software Bill of Materials (SBOM) as a manifest format. PolyglotPM understands a small subset of CycloneDX structures, primarily components and compositions. Components are defined with Package URLs (PURLs) that specify where to retrieve them from various package ecosystems. Components form a library of artifacts that can be aggregated into compositions, which may be called for by a particular invocation of `Transform-Xml` via the `-TargetComposition` parameter. This allows you to define complex software compositions and their dependencies in a standardized format, and have PolyglotPM handle the retrieval and management of those dependencies automatically.
+PowerXML uses the CycloneDX Software Bill of Materials (SBOM) as a manifest format. PolyglotPM understands a small subset of CycloneDX structures, primarily components and compositions. Components are defined with Package URLs (PURLs) that specify where to retrieve them from various package ecosystems. Components form a library of artifacts that can be aggregated into compositions, which may be called for by a particular invocation of `Transform-PXXml` via the `-TargetComposition` parameter. This allows you to define complex software compositions and their dependencies in a standardized format, and have PolyglotPM handle the retrieval and management of those dependencies automatically.
 
 Notes
 
-- PolyglotPM is only used by `Transform-Xml` when the `-Processing` parameter is set to `xproc`. It cannot retrieve dependencies for other processors or for non-XProc pipelines.
+- PolyglotPM is only used by `Transform-PXXml` when the `-Processing` parameter is set to `xproc`. It cannot retrieve dependencies for other processors or for non-XProc pipelines.
 

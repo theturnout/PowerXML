@@ -6,7 +6,7 @@
     Accepts a string containing a MIME multipart message and a boundary string.
     Returns an array of hashtables with keys: Headers, Content.
 #>
-function Parse-MimeMultipart {
+function Parse-PXMimeMultipart {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -88,7 +88,7 @@ function Parse-MimeMultipart {
     }
     
     # Output each part individually for proper pipeline support
-    # This allows: Parse-MimeMultipart | ConvertTo-NativeType | ForEach-Object {...}
+    # This allows: Parse-PXMimeMultipart | ConvertTo-PXNativeType | ForEach-Object {...}
     foreach ($part in $parts) {
         Write-Output $part
     }
@@ -97,7 +97,7 @@ function Parse-MimeMultipart {
 .SYNOPSIS
     Builds a MIME multipart message from document parts.
 .DESCRIPTION
-    Produces the same multipart/mixed format that Parse-MimeMultipart reads:
+    Produces the same multipart/mixed format that Parse-PXMimeMultipart reads:
     a generated boundary, a Content-Type header per part, and an X-Port header
     naming the port the part belongs to (so the message can be routed back to
     ports as input). XML documents are serialized with application/xml content
@@ -110,7 +110,7 @@ function Parse-MimeMultipart {
 .OUTPUTS
     The multipart message string, or the file path when -Path is used.
 #>
-function ConvertTo-MimeMultipart {
+function ConvertTo-PXMimeMultipart {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -180,7 +180,7 @@ namespace PowerXML
 }
 #endregion
 
-#region ConvertTo-NativeType
+#region ConvertTo-PXNativeType
 <#
 .SYNOPSIS
     Attempts to convert MIME multipart content to native PowerShell/.NET types based on Content-Type.
@@ -192,11 +192,11 @@ namespace PowerXML
     - text/plain, text/html, text/* -> [string]
     - Unknown types are wrapped in a PowerXML.MimeContent object
 .PARAMETER MimePart
-    A hashtable containing Headers and Content keys, as returned by Parse-MimeMultipart.
+    A hashtable containing Headers and Content keys, as returned by Parse-PXMimeMultipart.
 .OUTPUTS
     The converted native type, or a PowerXML.MimeContent wrapper for unknown types.
 #>
-function ConvertTo-NativeType {
+function ConvertTo-PXNativeType {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]

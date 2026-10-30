@@ -22,7 +22,7 @@ AfterAll {
     $env:polyglotpm = $null
 }
 
-Describe 'Transform-Xml' {
+Describe 'Transform-PXXml' {
     Context "Run for each XProc processor" -ForEach @(
         @{Name = "xmlcalabash"; EngineName = "XML Calabash" }, @{Name = "morganaxproc"; EngineName = "MorganaXProc-IIIse" }
     ) {
@@ -30,45 +30,45 @@ Describe 'Transform-Xml' {
             Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
         }
         It "$($_.Name) - Should exist as a function" {
-            Get-Command Transform-Xml | Should -Not -BeNullOrEmpty
+            Get-Command Transform-PXXml | Should -Not -BeNullOrEmpty
         }
-        # Add more specific tests for Transform-Xml here
+        # Add more specific tests for Transform-PXXml here
         It "$($_.Name) - Should run basic pipeline, stderr" {        
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" -Verbose | Should -BeLike "*Hello, World!" 
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" -Verbose | Should -BeLike "*Hello, World!" 
             #-Processing "xproc" -Processor "xmlcalabash" -PackageResolution @{TargetComposition = "oscal"} -InPipe -InPort @{} -OutPort @{} -Catalog "$PSScriptRoot/test_data/catalog.xml" -Passthrough @() -PassthroughJava @()
         }
 
         It "$($_.Name) - Should accept pipeline as raw XML string" {
             $rawXml = Get-Content "$PSScriptRoot/test_data/helloWorld.xpl" -Raw
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $rawXml
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $rawXml
             $result | Should -BeLike "*Hello, World!*"
         }
 
         It "$($_.Name) - Should accept pipeline as .NET XML object" {
             [xml]$xmlObj = Get-Content "$PSScriptRoot/test_data/helloWorld.xpl" -Raw
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $xmlObj
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $xmlObj
             $result | Should -BeLike "*Hello, World!*"
         }
 
         It "$($_.Name) - Should run basic pipeline with options, stderr" {
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/optionalHelloWorld.xpl" -Options @{ name = "John" } | Should -BeLike "*Hello, John!"
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/optionalHelloWorld.xpl" -Options @{ name = "John" } | Should -BeLike "*Hello, John!"
         }
 
         It "$($_.Name) - Should be running with correct processor" {        
-            [xml]$xmlContent = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/processor.xpl"        
+            [xml]$xmlContent = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/processor.xpl"        
             $xmlContent.supplemental."xproc-engine-name" | Should -Be $_.EngineName
         } 
 
         It "$($_.Name) - Should generate output to file" {
             $outputFileName = "$TestDrive/output.xml"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -OutPort @{"result" = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -OutPort @{"result" = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             [xml]$xmlContent = Get-Content $outputFileName -Raw
             $xmlContent.content | Should -Be "Hello, World!"
         } 
 
         It "$($_.Name) - Should generate output to stdout" {    
-            $xmlContent = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" 
+            $xmlContent = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" 
             ([xml]$xmlContent).content | Should -Be "Hello, World!"
         } 
         It "$($_.Name) - Should passthrough input to output via file" {
@@ -76,7 +76,7 @@ Describe 'Transform-Xml' {
             $outputFileName = "$TestDrive/output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
             $xmlInput.Save($inputFileName)
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $inputFileName } -OutPort @{"result" = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $inputFileName } -OutPort @{"result" = $outputFileName }
             Test-Path $outputFileName | Should -Be $true        
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -85,7 +85,7 @@ Describe 'Transform-Xml' {
         It "$($_.Name) - Should pass input via object" {
             $outputFileName = "$TestDrive/output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $xmlInput } -OutPort @{"result" = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $xmlInput } -OutPort @{"result" = $outputFileName }
             Test-Path $outputFileName | Should -Be $true        
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -93,52 +93,52 @@ Describe 'Transform-Xml' {
         It "$($_.Name) - Should pass input via object through STDIN" {
             $outputFileName = "$TestDrive/output2.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
-            $xmlInput | Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -OutPort @{"result" = $outputFileName }
+            $xmlInput | Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -OutPort @{"result" = $outputFileName }
             Test-Path $outputFileName | Should -Be $true        
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
         }
         It 'Should handle option:opt=value' {
             $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipeline -Options @{ name = "value" } | Should -BeLike "*Hello, value!"
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipeline -Options @{ name = "value" } | Should -BeLike "*Hello, value!"
         }
         # It 'Should handle option:Q{http://some-namespace}opt=5+3' {
         #     $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #     Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ 'Q{http://some-namespace}opt' = "5+3" } | Should -BeLike "*Hello, 5+3!"
+        #     Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ 'Q{http://some-namespace}opt' = "5+3" } | Should -BeLike "*Hello, 5+3!"
         # }
         # It 'Should handle option:pre:opt=42' {
         #     $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
         #     $namespaces = @{ pre = "http://example.com/pre" }
-        #     Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = 42 } | Should -BeLike "*Hello, 42!"
+        #     Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = 42 } | Should -BeLike "*Hello, 42!"
         # }
         #  It 'Should handle option:pre:opt=?40+2' {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = '?40+2' } | Should -BeLike "*Hello, ?40+2!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ 'pre:opt' = '?40+2' } | Should -BeLike "*Hello, ?40+2!"
         #  }
         #  It "Should handle option:map=map{'key':'value'}" {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
         #      $map = @{ key = 'value' }
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ map = $map } | Should -BeLike "*Hello, @{key = value}!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ map = $map } | Should -BeLike "*Hello, @{key = value}!"
         #  }
         #  It 'Should handle option:date=2020-03-28T13:53:00' {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ date = '2020-03-28T13:53:00' } | Should -BeLike "*Hello, 2020-03-28T13:53:00!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ date = '2020-03-28T13:53:00' } | Should -BeLike "*Hello, 2020-03-28T13:53:00!"
         #  }
         #  It 'Should handle option:name=Q{http://some-namespace}name' {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ name = 'Q{http://some-namespace}name' } | Should -BeLike "*Hello, Q{http://some-namespace}name!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ name = 'Q{http://some-namespace}name' } | Should -BeLike "*Hello, Q{http://some-namespace}name!"
         #  }
         #  It 'Should handle option:doc="parse-xml(/' {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ doc = "parse-xml('<node />')" } | Should -BeLike "*Hello, parse-xml('<node />')!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ doc = "parse-xml('<node />')" } | Should -BeLike "*Hello, parse-xml('<node />')!"
         #  }
         #  It "Should handle option:numbers='(1, 1+1, 2+1)'" {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ numbers = '(1, 1+1, 2+1)' } | Should -BeLike "*Hello, (1, 1+1, 2+1)!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ numbers = '(1, 1+1, 2+1)' } | Should -BeLike "*Hello, (1, 1+1, 2+1)!"
         #  }
         #  It 'Should handle option:numbers=(1,1+1,2+1,2+2)' {
         #      $pipeline = "$PSScriptRoot/test_data/optionalHelloWorld.xpl"
-        #      Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ numbers = '(1,1+1,2+1,2+2)' } | Should -BeLike "*Hello, (1,1+1,2+1,2+2)!"
+        #      Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_.Name -Pipeline $pipeline -Options @{ numbers = '(1,1+1,2+1,2+2)' } | Should -BeLike "*Hello, (1,1+1,2+1,2+2)!"
         #  }
         It "$($_.Name) - Should support document sequences on input port - file-based" {
             $inputFile1 = "$TestDrive/input1.xml"
@@ -148,7 +148,7 @@ Describe 'Transform-Xml' {
             $xmlInput1.Save($inputFile1)
             $xmlInput2.Save($inputFile2)
             $outputFileName = "$TestDrive/output.xml"
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($inputFile1, $inputFile2) } -OutPort @{ result = $outputFileName }
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($inputFile1, $inputFile2) } -OutPort @{ result = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             $xmlOutput = Get-Content $outputFileName -Raw
             $xmlOutput | Should -BeLike "*Doc1*"
@@ -157,7 +157,7 @@ Describe 'Transform-Xml' {
         It "$($_.Name) - Should support document sequences on input port - object-based" {
             [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
             [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"            
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($xmlInput1, $xmlInput2) }
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($xmlInput1, $xmlInput2) }
             # result is XmlDocument
             $result[0] | Should -BeOfType [xml]
             $result[1] | Should -BeOfType [xml]            
@@ -167,7 +167,7 @@ Describe 'Transform-Xml' {
             $outputFileName = "$TestDrive/co_output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>CollectMe</message></root>"
             $xmlInput.Save($inputFileName)
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $inputFileName } -OutPort @{"result" = $outputFileName } -CollectOutput
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort @{"source" = $inputFileName } -OutPort @{"result" = $outputFileName } -CollectOutput
             # File should still be written to disk
             Test-Path $outputFileName | Should -Be $true
             # Result should contain the document from the output file
@@ -178,7 +178,7 @@ Describe 'Transform-Xml' {
         }
 
         It "$($_.Name) - CollectOutput without outPort should behave like normal" {
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -CollectOutput
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -CollectOutput
             ([xml]$result).content | Should -Be "Hello, World!"
         }
 
@@ -190,7 +190,7 @@ Describe 'Transform-Xml' {
             $xmlInput1.Save($inputFile1)
             $xmlInput2.Save($inputFile2)
             $outputFileName = "$TestDrive/co_seq_output.xml"
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($inputFile1, $inputFile2) } -OutPort @{ result = $outputFileName } -CollectOutput
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = @($inputFile1, $inputFile2) } -OutPort @{ result = $outputFileName } -CollectOutput
             # File should exist on disk
             Test-Path $outputFileName | Should -Be $true
             # Result should contain XML documents from the collected output
@@ -204,7 +204,7 @@ Describe 'Transform-Xml' {
             $outputFileName = "$TestDrive/defport_output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>DefaultPort</message></root>"
             $xmlInput.Save($inputFileName)
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort $inputFileName -OutPort @{ result = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort $inputFileName -OutPort @{ result = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -212,7 +212,7 @@ Describe 'Transform-Xml' {
 
         It "$($_.Name) - Should bind single OutPort value to the primary port" {
             $outputFileName = "$TestDrive/defport_output2.xml"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -OutPort $outputFileName
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlhelloWorld.xpl" -OutPort $outputFileName
             Test-Path $outputFileName | Should -Be $true
             [xml]$xmlContent = Get-Content $outputFileName -Raw
             $xmlContent.content | Should -Be "Hello, World!"
@@ -221,7 +221,7 @@ Describe 'Transform-Xml' {
         It "$($_.Name) - Should accept an XML object as single InPort value" {
             $outputFileName = "$TestDrive/defport_output3.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>ObjDefaultPort</message></root>"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort $xmlInput -OutPort @{ result = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -InPort $xmlInput -OutPort @{ result = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -235,7 +235,7 @@ Describe 'Transform-Xml' {
             $xmlInput1.Save($inputFile1)
             $xmlInput2.Save($inputFile2)
             $outputFileName = "$TestDrive/defport_seq_output.xml"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @($inputFile1, $inputFile2) -OutPort @{ result = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @($inputFile1, $inputFile2) -OutPort @{ result = $outputFileName }
             $xmlOutput = Get-Content $outputFileName -Raw
             $xmlOutput | Should -BeLike "*DefDoc1*"
             $xmlOutput | Should -BeLike "*DefDoc2*"
@@ -259,7 +259,7 @@ Describe 'Transform-Xml' {
             $outputFileName = "$TestDrive/defport_multi_output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>MultiPort</message></root>"
             $xmlInput.Save($inputFileName)
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFile -InPort $inputFileName -OutPort @{ result = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFile -InPort $inputFileName -OutPort @{ result = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -284,14 +284,14 @@ Describe 'Transform-Xml' {
             $outputFileName = "$TestDrive/defport_single_output.xml"
             [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>SinglePort</message></root>"
             $xmlInput.Save($inputFileName)
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFile -InPort $inputFileName -OutPort @{ result = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFile -InPort $inputFileName -OutPort @{ result = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             [xml]$xmlOutput = Get-Content $outputFileName -Raw
             $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
         }
 
         It "$($_.Name) - Should process XPL using invisible XML with the processor in targetComposition" {
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "oscal" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/ixml.xpl"
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "oscal" } -Processor $_.Name -Pipeline "$PSScriptRoot/test_data/ixml.xpl"
             $result | Should -BeLike "*March*"
         }
             
@@ -300,7 +300,7 @@ Describe 'Transform-Xml' {
     # It 'Should place output on the pipeline' {
     #     $outputFileName = Join-Path $global:TestDir "output2.xml"
     #     [xml]$xmlInput = "<?xml version=`"1.0`" encoding=`"utf-8`"?><root><message>Hello, World!</message></root>"
-    #     $xmlInput | Transform-Xml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_ -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -OutPort @{"result" = $outputFileName}
+    #     $xmlInput | Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests"} -Processor $_ -Pipeline "$PSScriptRoot/test_data/xmlpassthru.xpl" -OutPort @{"result" = $outputFileName}
     #     Test-Path $outputFileName | Should -Be $true        
     #     [xml]$xmlOutput = Get-Content $outputFileName -Raw
     #     $xmlInput.OuterXml | Should -Be $xmlOutput.OuterXml
@@ -315,7 +315,7 @@ Describe 'XmlCalabash Specific Tests' {
     It 'Should handle XML Calabash specific options' {
         [xml]$xmlInput1 = "<?xml version='1.0'?><root><message>Doc1</message></root>"
         [xml]$xmlInput2 = "<?xml version='1.0'?><root><message>Doc2</message></root>"            
-        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } `
+        $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } `
             -Processor "xmlcalabash" `
             -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" `
             -InPort @{ source = @($xmlInput1, $xmlInput2) } 
@@ -325,7 +325,7 @@ Describe 'XmlCalabash Specific Tests' {
     }
 }
 
-Describe 'Transform-Xml parameter handling' {
+Describe 'Transform-PXXml parameter handling' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
     }
@@ -333,7 +333,7 @@ Describe 'Transform-Xml parameter handling' {
 
     It 'Should accept a custom sbomPath via PackageResolution and run pipeline' {
         $customSbom = "$PSScriptRoot/test_data/sbom.xml"
-        $result = Transform-Xml `
+        $result = Transform-PXXml `
             -PackageResolution @{SbomPath = $customSbom; targetComposition = 'pester-tests' } `
             -Processor 'xmlcalabash' `
             -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
@@ -371,7 +371,7 @@ Describe 'Transform-Xml parameter handling' {
         $tempSbom = Join-Path $TestDrive 'auto-first-sbom.xml'
         Set-Content -Path $tempSbom -Value $sbomContent -Encoding UTF8
 
-        $result = Transform-Xml `
+        $result = Transform-PXXml `
             -PackageResolution @{SbomPath = $tempSbom } `
             -Processor 'xmlcalabash' `
             -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
@@ -390,7 +390,7 @@ Describe 'Get-PXClassPath' {
 Describe 'Direct step execution' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
-        Get-Namespace | Unregister-Namespace
+        Get-PXNamespace | Unregister-PXNamespace
     }
 
     Context "Run for each XProc processor" -ForEach @(
@@ -398,52 +398,52 @@ Describe 'Direct step execution' {
         @{Name = "morganaxproc"; EngineName = "MorganaXProc-IIIse" }
     ) {
         It "$($_.Name) - Should run p:identity directly" {
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
             $result | Should -BeLike "*ORD-001*"
         }
 
         It "$($_.Name) - Should run a step with a single-value InPort" {
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort "$PSScriptRoot/test_data/order.xml"
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort "$PSScriptRoot/test_data/order.xml"
             $result | Should -BeLike "*ORD-001*"
         }
 
         It "$($_.Name) - Should run p:xinclude directly" {
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:xinclude" -InPort @{ source = "$PSScriptRoot/test_data/xinclude-host.xml" }
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:xinclude" -InPort @{ source = "$PSScriptRoot/test_data/xinclude-host.xml" }
             $result | Should -BeLike "*Included content here*"
         }
 
         It "$($_.Name) - Should write step output to a file via outPort" {
             $outputFileName = "$TestDrive/step_output.xml"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } -OutPort @{ result = $outputFileName }
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } -OutPort @{ result = $outputFileName }
             Test-Path $outputFileName | Should -Be $true
             (Get-Content $outputFileName -Raw) | Should -BeLike "*ORD-001*"
         }
     }
 
     It "xmlcalabash - Should run p:xslt directly with a stylesheet port" {
-        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = "$PSScriptRoot/test_data/order-total.xsl" }
+        $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = "$PSScriptRoot/test_data/order-total.xsl" }
         $result | Should -BeLike "*order-summary*"
     }
 
     It "xmlcalabash - Should default unprefixed step names to the p: namespace" {
-        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+        $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
         $result | Should -BeLike "*ORD-001*"
     }
 
     It "Should throw when -Step is used with -Processing xslt" {
-        { Transform-Xml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" } | Should -Throw "*only supported for XProc*"
+        { Transform-PXXml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" } | Should -Throw "*only supported for XProc*"
     }
 
     It "Should throw when both -Step and -Pipeline are supplied" {
-        { Transform-Xml -Processor "xmlcalabash" -Step "p:identity" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" } | Should -Throw
+        { Transform-PXXml -Processor "xmlcalabash" -Step "p:identity" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" } | Should -Throw
     }
 
     It "Should throw for step prefixes that are not bound to a namespace" {
-        { Transform-Xml -Processor "xmlcalabash" -Step "cx:dtd-validator" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } } | Should -Throw "*not bound*"
+        { Transform-PXXml -Processor "xmlcalabash" -Step "cx:dtd-validator" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } } | Should -Throw "*not bound*"
     }
 
     It "Should accept a registered extension prefix" {
-        Register-Namespace -Prefix "ex" -Uri "http://example.com/ex"
+        Register-PXNamespace -Prefix "ex" -Uri "http://example.com/ex"
         $global:CapturedStep = $null
         Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
         Mock Invoke-XmlCalabash -ModuleName powerxml {
@@ -451,10 +451,10 @@ Describe 'Direct step execution' {
             return "ok"
         }
 
-        Transform-Xml -Processor "xmlcalabash" -Step "ex:mystep"
+        Transform-PXXml -Processor "xmlcalabash" -Step "ex:mystep"
 
         $global:CapturedStep | Should -Be "ex:mystep"
-        Unregister-Namespace -Prefix "ex"
+        Unregister-PXNamespace -Prefix "ex"
     }
 
     It "Should synthesize a shell for morganaxproc step runs" {
@@ -467,7 +467,7 @@ Describe 'Direct step execution' {
             return "ok"
         }
 
-        Transform-Xml -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "in.xml"; stylesheet = "style.xsl" } -OutPort @{ result = "out.xml" }
+        Transform-PXXml -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "in.xml"; stylesheet = "style.xsl" } -OutPort @{ result = "out.xml" }
 
         $global:CapturedShell | Should -BeLike "*<p:xslt*"
         $global:CapturedShell | Should -BeLike "*<p:input port=`"source`" primary=`"true`"*"
@@ -490,19 +490,19 @@ Describe 'Input resolution' {
     ) {
         It "$($_.Name) - Should accept a file URI as InPort source" {
             $orderFileUri = "file:///" + (("$PSScriptRoot/test_data/order.xml") -replace "\\", "/")
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = $orderFileUri }
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = $orderFileUri }
             $result | Should -BeLike "*ORD-001*"
         }
 
         It "$($_.Name) - Should accept a file URI as Pipeline" {
             $pipelineFileUri = "file:///" + (("$PSScriptRoot/test_data/helloWorld.xpl") -replace "\\", "/")
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFileUri
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $pipelineFileUri
             $result | Should -BeLike "*Hello, World!"
         }
     }
 
     It "xmlcalabash - Should accept an http URI as InPort source" {
-        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:identity" -InPort @{ source = "https://www.w3.org/2001/xml.xsd" }
+        $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:identity" -InPort @{ source = "https://www.w3.org/2001/xml.xsd" }
         $first = @($result) | Select-Object -First 1
         $content = if ($first -is [System.Xml.XmlDocument]) { $first.OuterXml } else { [string]$first }
         $content | Should -BeLike "*schema*"
@@ -551,28 +551,28 @@ Describe 'Input resolution' {
         }
 
         It 'Should resolve nuget purls via the filename qualifier (recursive search)' {
-            $result = Transform-Xml -Processing "xslt" -Processor "dotnet" `
+            $result = Transform-PXXml -Processing "xslt" -Processor "dotnet" `
                 -Pipeline "pkg:nuget/FakePkg@1.0?filename=transform.xsl" `
                 -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml"
             $result | Should -BeLike "*purl-resolved*"
         }
 
         It 'Should resolve maven purls via the filename qualifier' {
-            $result = Transform-Xml -Processing "xslt" -Processor "dotnet" `
+            $result = Transform-PXXml -Processing "xslt" -Processor "dotnet" `
                 -Pipeline "pkg:maven/org.fake/fake-artifact@1.0?filename=transform.xsl" `
                 -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml"
             $result | Should -BeLike "*purl-resolved*"
         }
 
         It 'Should resolve a purl via the #subpath' {
-            $result = Transform-Xml -Processing "xslt" -Processor "dotnet" `
+            $result = Transform-PXXml -Processing "xslt" -Processor "dotnet" `
                 -Pipeline "pkg:nuget/FakePkg@1.0#deep/transform.xsl" `
                 -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml"
             $result | Should -BeLike "*purl-resolved*"
         }
 
         It 'Should throw when the file is not found in the package' {
-            { Transform-Xml -Processing "xslt" -Processor "dotnet" `
+            { Transform-PXXml -Processing "xslt" -Processor "dotnet" `
                     -Pipeline "pkg:nuget/FakePkg@1.0?filename=nothere.xsl" `
                     -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml" } | Should -Throw "*not found*"
         }
@@ -580,13 +580,13 @@ Describe 'Input resolution' {
         It 'Should throw when the filename is ambiguous' {
             Set-Content -Path (Join-Path $global:PurlRepo "FakePkg-1.0\twin.xsl") -Value "twin"
             Set-Content -Path (Join-Path $global:PurlRepo "FakePkg-1.0\deep\twin.xsl") -Value "twin"
-            { Transform-Xml -Processing "xslt" -Processor "dotnet" `
+            { Transform-PXXml -Processing "xslt" -Processor "dotnet" `
                     -Pipeline "pkg:nuget/FakePkg@1.0?filename=twin.xsl" `
                     -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml" } | Should -Throw "*ambiguous*"
         }
 
         It 'Should throw when a directory package has no file selector' {
-            { Transform-Xml -Processing "xslt" -Processor "dotnet" `
+            { Transform-PXXml -Processing "xslt" -Processor "dotnet" `
                     -Pipeline "pkg:nuget/FakePkg@1.0" `
                     -InPort "pkg:nuget/FakePkg@1.0?filename=input.xml" } | Should -Throw "*resolves to a directory*"
         }
@@ -594,7 +594,7 @@ Describe 'Input resolution' {
 
     Context "PURL inputs (live, cached)" {
         It 'Should run a pipeline from a real package via purl' {
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" `
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" `
                 -Pipeline "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip#helloWorld.xpl"
             $result | Should -BeLike "*Share and enjoy*"
         }
@@ -632,7 +632,7 @@ Describe 'Manual classpath' {
                     $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
                 }
 
-                $result = Transform-Xml -Processor $_.Name -ClassPath $cp -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
+                $result = Transform-PXXml -Processor $_.Name -ClassPath $cp -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
 
                 $resultText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
                 $resultText | Should -BeLike "*ORD-001*"
@@ -655,7 +655,7 @@ Describe 'Manual classpath' {
         $userConfig = Join-Path $TestDrive "manual-morgana-config.xml"
         Set-Content -Path $userConfig -Value '<?xml version="1.0" encoding="UTF-8"?><morgana-config xmlns="http://www.xml-project.com/morganaxproc"/>'
 
-        $result = Transform-Xml -Processor "morganaxproc" -ClassPath $cp -Configuration $userConfig `
+        $result = Transform-PXXml -Processor "morganaxproc" -ClassPath $cp -Configuration $userConfig `
             -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
 
         $resultText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
@@ -663,7 +663,7 @@ Describe 'Manual classpath' {
     }
 
     It 'Should throw when -ClassPath is used with -Processing xslt' {
-        { Transform-Xml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" -ClassPath "foo" } | Should -Throw "*only supported for XProc*"
+        { Transform-PXXml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" -ClassPath "foo" } | Should -Throw "*only supported for XProc*"
     }
 
     It 'Should skip composition resolution when -ClassPath is given' {
@@ -675,7 +675,7 @@ Describe 'Manual classpath' {
             return "ok"
         }
 
-        Transform-Xml -Processor "xmlcalabash" -ClassPath "C:/some/jars/*" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+        Transform-PXXml -Processor "xmlcalabash" -ClassPath "C:/some/jars/*" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
 
         @($global:CapturedPaths).Count | Should -Be 0
         $global:CapturedClassPath | Should -Be "C:/some/jars/*"
@@ -703,12 +703,12 @@ Describe 'Multipart MIME' {
     ) {
         It "$($_.Name) - Should route MIME parts to ports by X-Port header" {
             $mimePath = Join-Path $TestDrive "routed.mime"
-            ConvertTo-MimeMultipart -Path $mimePath -Parts @(
+            ConvertTo-PXMimeMultipart -Path $mimePath -Parts @(
                 @{ Port = "source"; ContentType = "application/xml"; Content = ([xml](Get-Content "$PSScriptRoot/test_data/order.xml" -Raw)) },
                 @{ Port = "stylesheet"; ContentType = "application/xml"; Content = ([xml](Get-Content $script:RoutedXsl -Raw)) }
             ) | Out-Null
 
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
                 -Step "p:xslt" -InPort @{ source = $mimePath }
 
             $resultText = (@($result) | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join " "
@@ -718,12 +718,12 @@ Describe 'Multipart MIME' {
 
         It "$($_.Name) - Should bind parts without X-Port to the bound port as a sequence" {
             $mimePath = Join-Path $TestDrive "sequence.mime"
-            ConvertTo-MimeMultipart -Path $mimePath -Parts @(
+            ConvertTo-PXMimeMultipart -Path $mimePath -Parts @(
                 @{ ContentType = "application/xml"; Content = "<root><message>SeqMime1</message></root>" },
                 @{ ContentType = "application/xml"; Content = "<root><message>SeqMime2</message></root>" }
             ) | Out-Null
 
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/xmlseqpassthru.xpl" -InPort @{ source = $mimePath }
 
             @($result).Count | Should -Be 2
@@ -734,7 +734,7 @@ Describe 'Multipart MIME' {
 
         It "$($_.Name) - Should write all outputs to a multiplex file with X-Port headers" {
             $mimeOut = Join-Path $TestDrive "out.mime"
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
                 -Step "p:xslt" `
                 -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $script:RoutedXsl } `
                 -MultiplexOutput $mimeOut
@@ -743,7 +743,7 @@ Describe 'Multipart MIME' {
             Test-Path $mimeOut | Should -Be $true
             $message = Get-Content -Path $mimeOut -Raw
             $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
-            $parts = @(Parse-MimeMultipart -MimeString $message -Boundary $boundary)
+            $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
             $parts.Count | Should -Be 1
             $parts[0].Headers["X-Port"] | Should -Be "result"
             $parts[0].Content | Should -BeLike "*routed*"
@@ -751,12 +751,12 @@ Describe 'Multipart MIME' {
 
         It "$($_.Name) - Should round-trip a multiplex file back as input" {
             $mimeOut = Join-Path $TestDrive "roundtrip.mime"
-            Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+            Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
                 -Step "p:xslt" `
                 -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $script:RoutedXsl } `
                 -MultiplexOutput $mimeOut | Out-Null
 
-            $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
+            $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/resultpassthru.xpl" -InPort @{ result = $mimeOut }
 
             $result | Should -BeLike "*routed*"
@@ -764,7 +764,7 @@ Describe 'Multipart MIME' {
     }
 
     It 'Should throw when -MultiplexOutput is used with -Processing xslt' {
-        { Transform-Xml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" -MultiplexOutput "out.mime" } | Should -Throw "*only supported for XProc*"
+        { Transform-PXXml -Processing "xslt" -Processor "dotnet" -Step "p:xslt" -InPort "$PSScriptRoot/test_data/order.xml" -MultiplexOutput "out.mime" } | Should -Throw "*only supported for XProc*"
     }
 }
 
@@ -786,7 +786,7 @@ Describe 'Morgana configuration' {
         $fakeComp = Join-Path $TestDrive "fake-comp"
         New-Item -ItemType Directory -Path $fakeComp -Force | Out-Null
         New-Item -ItemType File -Path (Join-Path $fakeComp "Saxon-HE-12.9.jar") -Force | Out-Null
-        $config = Get-MorganaAutoConfig -Paths @($fakeComp)
+        $config = Get-PXMorganaAutoConfig -Paths @($fakeComp)
         $config["xslt-connector"] | Should -Be "Saxon12-3"
         $config["xquery-connector"] | Should -Be "Saxon12-3"
         $config["ixml-connector"].Count | Should -Be 2
@@ -795,13 +795,13 @@ Describe 'Morgana configuration' {
     It 'Should leave connectors unset when no Saxon jar is present' {
         $fakeComp = Join-Path $TestDrive "empty-comp"
         New-Item -ItemType Directory -Path $fakeComp -Force | Out-Null
-        $config = Get-MorganaAutoConfig -Paths @($fakeComp)
+        $config = Get-PXMorganaAutoConfig -Paths @($fakeComp)
         $config.ContainsKey("xslt-connector") | Should -Be $false
         $config["ixml-connector"].Count | Should -Be 2
     }
 
     It 'Should generate config XML from a hashtable (1-1 with JSON)' {
-        $configPath = ConvertTo-XmlConfig -Config @{
+        $configPath = ConvertTo-PXXmlConfig -Config @{
             "xslt-connector" = "Saxon12-3"
             "ixml-connector" = @("One", "Two")
             "mediatype-mapping" = @{ "@file-extension" = "ixml"; "@media-type" = "text/plain" }
@@ -815,12 +815,12 @@ Describe 'Morgana configuration' {
     }
 
     It "morganaxproc - Should run XSLT 3.0 with the auto-injected config" {
-        $result = Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $xslt30 }
+        $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $xslt30 }
         $result | Should -BeLike "*auto-config*"
     }
 
     It "morganaxproc - Should let a -Configuration hashtable override auto-detection" {
-        { Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $xslt30 } -Configuration @{ "xslt-connector" = "Saxon10" } } | Should -Throw "*failed with exit code*"
+        { Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $xslt30 } -Configuration @{ "xslt-connector" = "Saxon10" } } | Should -Throw "*failed with exit code*"
     }
 
     It "morganaxproc - Should pass a configuration file path through unchanged" {
@@ -832,7 +832,7 @@ Describe 'Morgana configuration' {
             return "ok"
         }
 
-        Transform-Xml -Processor "morganaxproc" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" -Configuration $userConfig
+        Transform-PXXml -Processor "morganaxproc" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" -Configuration $userConfig
 
         $global:CapturedConfig | Should -Be $userConfig
         Test-Path $userConfig | Should -Be $true
@@ -851,12 +851,99 @@ Describe 'Processor failure handling' {
         It "$($_.Name) - Should throw when the pipeline is invalid" {
             $badPipeline = Join-Path $TestDrive "bad-port.xpl"
             Set-Content -Path $badPipeline -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><p:declare-step xmlns:p=`"http://www.w3.org/ns/xproc`" name=`"pipeline`" version=`"3.0`"><p:identity><p:with-input port=`"nope`"/></p:identity></p:declare-step>"
-            { Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $badPipeline } | Should -Throw "*failed with exit code*"
+            { Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Pipeline $badPipeline } | Should -Throw "*failed with exit code*"
         }
 
         It "$($_.Name) - Should throw when the step does not exist" {
-            { Transform-Xml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:nonexistent-step" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } } | Should -Throw "*failed with exit code*"
+            { Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:nonexistent-step" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" } } | Should -Throw "*failed with exit code*"
         }
+    }
+}
+
+Describe 'Composition registry' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    BeforeEach {
+        # Reset registry state between tests (unregistering the default clears the selection)
+        Get-PXComposition | Unregister-PXComposition
+    }
+
+    It 'Should register and get a composition' {
+        Register-PXComposition -Name "test-comp" -TargetComposition "pester-tests" -SbomPath "custom.xml" -GetLatest
+        $entry = Get-PXComposition -Name "test-comp"
+
+        $entry.Name | Should -Be "test-comp"
+        $entry.TargetComposition | Should -Be "pester-tests"
+        $entry.SbomPath | Should -Be "custom.xml"
+        $entry.GetLatest | Should -Be $true
+        $entry.Resolved | Should -Be $false
+        $entry.IsDefault | Should -Be $false
+    }
+
+    It 'Should warn when overwriting an existing composition' {
+        Register-PXComposition -Name "test-comp" -TargetComposition "one"
+        Register-PXComposition -Name "test-comp" -TargetComposition "two" -WarningAction SilentlyContinue -WarningVariable warnings
+
+        $warnings | Should -Not -BeNullOrEmpty
+        (Get-PXComposition -Name "test-comp").TargetComposition | Should -Be "two"
+    }
+
+    It 'Should unregister compositions and tolerate unknown names' {
+        Register-PXComposition -Name "test-comp" -TargetComposition "pester-tests"
+        Unregister-PXComposition -Name "test-comp"
+        (Get-PXComposition).Count | Should -Be 0
+        { Unregister-PXComposition -Name "never-registered" } | Should -Not -Throw
+    }
+
+    It 'Should throw when selecting an unregistered composition' {
+        { Select-PXComposition -Name "never-registered" } | Should -Throw "*not registered*"
+    }
+
+    It 'Should run through the session default composition and cache resolved paths' {
+        Register-PXComposition -Name "default-comp" -TargetComposition "pester-tests"
+        Select-PXComposition -Name "default-comp"
+
+        $result = Transform-PXXml -Processor "xmlcalabash" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+        $result | Should -BeLike "*Hello, World!*"
+
+        $entry = Get-PXComposition -Name "default-comp"
+        $entry.Resolved | Should -Be $true
+        $entry.Paths.Count | Should -BeGreaterThan 0
+
+        # A second run must reuse the cached paths: point PolyglotPM at an empty
+        # repository — re-resolution would fail or download, caching just runs
+        $script:PreviousPolyglotpm = $env:polyglotpm
+        $emptyRepo = Join-Path $TestDrive "p12-empty-repo"
+        New-Item -ItemType Directory -Path $emptyRepo | Out-Null
+        $env:polyglotpm = $emptyRepo
+        try {
+            $result2 = Transform-PXXml -Processor "xmlcalabash" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
+            $result2 | Should -BeLike "*Hello, World!*"
+            (Get-ChildItem $emptyRepo | Measure-Object).Count | Should -Be 0
+        }
+        finally {
+            $env:polyglotpm = $script:PreviousPolyglotpm
+        }
+    }
+
+    It 'Should let explicit -PackageResolution win over the session default' {
+        Register-PXComposition -Name "bogus-default" -TargetComposition "no-such-composition"
+        Select-PXComposition -Name "bogus-default"
+
+        $result = Transform-PXXml -Processor "xmlcalabash" -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" -PackageResolution @{TargetComposition = "pester-tests" }
+        $result | Should -BeLike "*Hello, World!*"
+    }
+
+    It 'Should clear the default when it is unregistered' {
+        Register-PXComposition -Name "default-comp" -TargetComposition "pester-tests"
+        Select-PXComposition -Name "default-comp"
+        (Get-PXComposition -Name "default-comp").IsDefault | Should -Be $true
+
+        Unregister-PXComposition -Name "default-comp"
+
+        (Get-PXComposition | Where-Object { $_.IsDefault }) | Should -BeNullOrEmpty
     }
 }
 
@@ -867,46 +954,46 @@ Describe 'Namespace registry' {
 
     BeforeEach {
         # Reset the session registry between tests
-        Get-Namespace | Unregister-Namespace
+        Get-PXNamespace | Unregister-PXNamespace
     }
 
     It 'Should register and get a namespace' {
-        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
-        $result = Get-Namespace
+        Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
+        $result = Get-PXNamespace
         $result.Prefix | Should -Be "pre"
         $result.Uri | Should -Be "http://example.com/pre"
     }
 
-    It 'Should filter Get-Namespace by prefix' {
-        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
-        Register-Namespace -Prefix "other" -Uri "http://example.com/other"
-        (Get-Namespace).Count | Should -Be 2
-        (Get-Namespace -Prefix "pre").Uri | Should -Be "http://example.com/pre"
+    It 'Should filter Get-PXNamespace by prefix' {
+        Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
+        Register-PXNamespace -Prefix "other" -Uri "http://example.com/other"
+        (Get-PXNamespace).Count | Should -Be 2
+        (Get-PXNamespace -Prefix "pre").Uri | Should -Be "http://example.com/pre"
     }
 
     It 'Should warn and overwrite a conflicting prefix' {
-        Register-Namespace -Prefix "pre" -Uri "http://example.com/one"
-        Register-Namespace -Prefix "pre" -Uri "http://example.com/two" -WarningAction SilentlyContinue -WarningVariable warnings
+        Register-PXNamespace -Prefix "pre" -Uri "http://example.com/one"
+        Register-PXNamespace -Prefix "pre" -Uri "http://example.com/two" -WarningAction SilentlyContinue -WarningVariable warnings
         $warnings | Should -Not -BeNullOrEmpty
-        (Get-Namespace -Prefix "pre").Uri | Should -Be "http://example.com/two"
+        (Get-PXNamespace -Prefix "pre").Uri | Should -Be "http://example.com/two"
     }
 
     It 'Should be idempotent when re-registering the same URI' {
-        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
-        { Register-Namespace -Prefix "pre" -Uri "http://example.com/pre" } | Should -Not -Throw
-        (Get-Namespace).Count | Should -Be 1
+        Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
+        { Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre" } | Should -Not -Throw
+        (Get-PXNamespace).Count | Should -Be 1
     }
 
     It 'Should unregister namespaces and tolerate unknown prefixes' {
-        Register-Namespace -Prefix "pre" -Uri "http://example.com/pre"
-        Unregister-Namespace -Prefix "pre"
-        (Get-Namespace).Count | Should -Be 0
-        { Unregister-Namespace -Prefix "never-registered" } | Should -Not -Throw
+        Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
+        Unregister-PXNamespace -Prefix "pre"
+        (Get-PXNamespace).Count | Should -Be 0
+        { Unregister-PXNamespace -Prefix "never-registered" } | Should -Not -Throw
     }
 
     It 'Should merge the registry with -Namespace, parameter winning' {
-        Register-Namespace -Prefix "reg" -Uri "http://example.com/reg"
-        Register-Namespace -Prefix "both" -Uri "http://example.com/reg-both"
+        Register-PXNamespace -Prefix "reg" -Uri "http://example.com/reg"
+        Register-PXNamespace -Prefix "both" -Uri "http://example.com/reg-both"
 
         $global:CapturedNamespace = $null
         Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
@@ -915,7 +1002,7 @@ Describe 'Namespace registry' {
             return "ok"
         }
 
-        Transform-Xml `
+        Transform-PXXml `
             -Processor "xmlcalabash" `
             -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" `
             -Namespace @{ both = "http://example.com/param-both"; paramOnly = "http://example.com/param-only" }
@@ -928,7 +1015,7 @@ Describe 'Namespace registry' {
     }
 
     It 'Should pass only the registry when -Namespace is omitted' {
-        Register-Namespace -Prefix "solo" -Uri "http://example.com/solo"
+        Register-PXNamespace -Prefix "solo" -Uri "http://example.com/solo"
 
         $global:CapturedNamespace = $null
         Mock Copy-SoftwareComposition -ModuleName polyglot { return @("C:/fake-path") }
@@ -937,7 +1024,7 @@ Describe 'Namespace registry' {
             return "ok"
         }
 
-        Transform-Xml `
+        Transform-PXXml `
             -Processor "morganaxproc" `
             -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl"
 

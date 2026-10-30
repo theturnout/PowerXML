@@ -4,7 +4,7 @@ PowerXML currently supports `XslCompiledTransform` (XSLT 1.0), MSXML 6.0 (XSLT 1
 
 ## Access Methods
 
-Every processor is reached through `Transform-Xml`. The `-Processing` parameter selects the technology (`xslt` or `xproc`), the `-Processor` parameter selects the engine, and additional libraries are resolved automatically by PolyglotPM where noted. For example, XSLT processing gives access to .NET engines, while XProc processing gives access to Java engines.
+Every processor is reached through `Transform-PXXml`. The `-Processing` parameter selects the technology (`xslt` or `xproc`), the `-Processor` parameter selects the engine, and additional libraries are resolved automatically by PolyglotPM where noted. For example, XSLT processing gives access to .NET engines, while XProc processing gives access to Java engines.
 
 Supported today:
 

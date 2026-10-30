@@ -4,9 +4,9 @@ The standard output from the processor, which may contain one or more XML docume
 .NOTES
 If multiple documents are encountered without mime/type, they are assumed to be XML.
 .OUTPUTS
-One or more documents in their native type as possible. See `ConvertTo-NativeType` for details on how MIME parts are converted to native types.
+One or more documents in their native type as possible. See `ConvertTo-PXNativeType` for details on how MIME parts are converted to native types.
 #>
-function Get-MultiXmlDocuments {
+function Get-PXMultiXmlDocuments {
     param (
         [Parameter(ValueFromPipeline = $true, Mandatory = $true)]
         [string]$StdOut
@@ -19,9 +19,9 @@ function Get-MultiXmlDocuments {
     $output = if ($firstLine -match '^--(.+)') {
         # Multipart MIME output
         $boundary = $matches[1] -replace '--$', ''
-        $parts = Parse-MimeMultipart -MimeString $StdOut -Boundary $boundary
+        $parts = Parse-PXMimeMultipart -MimeString $StdOut -Boundary $boundary
         foreach ($part in $parts) {
-            ConvertTo-NativeType -MimePart $part
+            ConvertTo-PXNativeType -MimePart $part
         }
     }
     elseif ([regex]::IsMatch($StdOut, $headerPattern, 'Multiline')) {
@@ -30,7 +30,7 @@ function Get-MultiXmlDocuments {
         foreach ($doc in $docs) {
             $clean = [regex]::Replace($doc, $trailerPattern, '', 'Multiline')
             $mimePart = @{ Headers = @{ 'Content-Type' = 'application/xml' }; Content = $clean.Trim() }
-            ConvertTo-NativeType -MimePart $mimePart
+            ConvertTo-PXNativeType -MimePart $mimePart
         }
     }
     elseif (([regex]::Matches($StdOut, '<\?xml')).Count -gt 1) {
@@ -38,7 +38,7 @@ function Get-MultiXmlDocuments {
         $parts = [regex]::Split($StdOut.Trim(), '(?=<\?xml)') | Where-Object { $_.Trim() }
         foreach ($part in $parts) {
             $mimePart = @{ Headers = @{ 'Content-Type' = 'application/xml' }; Content = $part.Trim() }
-            ConvertTo-NativeType -MimePart $mimePart
+            ConvertTo-PXNativeType -MimePart $mimePart
         }
     }
     else {
@@ -66,7 +66,7 @@ The default namespace of the root element.
 .OUTPUTS
 The path to the generated configuration file.
 #>
-function ConvertTo-XmlConfig {
+function ConvertTo-PXXmlConfig {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -138,9 +138,9 @@ not on the classpath.
 .PARAMETER Paths
 The software composition paths (directories scanned recursively for Saxon jars).
 .OUTPUTS
-A configuration hashtable suitable for ConvertTo-XmlConfig.
+A configuration hashtable suitable for ConvertTo-PXXmlConfig.
 #>
-function Get-MorganaAutoConfig {
+function Get-PXMorganaAutoConfig {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -193,7 +193,7 @@ Output port bindings (port name to path). When empty, a conventional primary res
 .OUTPUTS
 The path to the generated temporary pipeline file.
 #>
-function New-StepShell {
+function New-PXStepShell {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -215,7 +215,7 @@ function New-StepShell {
         $prefixUri = $Namespaces[$stepPrefix]
     }
     else {
-        throw "Step namespace prefix '$stepPrefix' is not bound. Register it with Register-Namespace or pass -Namespace."
+      throw "Step namespace prefix '$stepPrefix' is not bound. Register it with Register-PXNamespace or pass -Namespace."
     }
 
     # One declared input port per bound input; "source" becomes the primary port
@@ -469,10 +469,10 @@ function Invoke-XmlCalabash {
     }
 
     $stdoutResult = if ($output -is [array]) {
-        $output -join "`n" | Get-MultiXmlDocuments
+        $output -join "`n" | Get-PXMultiXmlDocuments
     }
     else {
-        $output | Get-MultiXmlDocuments
+        $output | Get-PXMultiXmlDocuments
     }
 
     if ($CollectOutput -and $OutPort -and $OutPort.Count -gt 0) {
@@ -481,7 +481,7 @@ function Invoke-XmlCalabash {
             $filePath = $enum.Value
             if (Test-Path $filePath) {
                 $fileContent = Get-Content -Path $filePath -Raw
-                $collectedFromFiles += @($fileContent | Get-MultiXmlDocuments)
+                $collectedFromFiles += @($fileContent | Get-PXMultiXmlDocuments)
             }
         }
         $combined = @()
@@ -558,13 +558,13 @@ function Invoke-MorganaXProc {
         $generatedConfigPath = $null
     }
     else {
-        $effectiveConfig = Get-MorganaAutoConfig -Paths $Paths
+        $effectiveConfig = Get-PXMorganaAutoConfig -Paths $Paths
         if ($Configuration -is [hashtable]) {
             foreach ($key in $Configuration.Keys) {
                 $effectiveConfig[$key] = $Configuration[$key]
             }
         }
-        $generatedConfigPath = ConvertTo-XmlConfig -Config $effectiveConfig `
+        $generatedConfigPath = ConvertTo-PXXmlConfig -Config $effectiveConfig `
             -Root "morgana-config" `
             -Namespace "http://www.xml-project.com/morganaxproc"
         $configArg = $generatedConfigPath
@@ -673,10 +673,10 @@ function Invoke-MorganaXProc {
     }
 
     $stdoutResult = if ($output -is [array]) {
-        $output -join "`n" | Get-MultiXmlDocuments
+        $output -join "`n" | Get-PXMultiXmlDocuments
     }
     else {
-        $output | Get-MultiXmlDocuments
+        $output | Get-PXMultiXmlDocuments
     }
 
     if ($CollectOutput -and $OutPort -and $OutPort.Count -gt 0) {
@@ -685,7 +685,7 @@ function Invoke-MorganaXProc {
             $filePath = $enum.Value
             if (Test-Path $filePath) {
                 $fileContent = Get-Content -Path $filePath -Raw
-                $collectedFromFiles += @($fileContent | Get-MultiXmlDocuments)
+                $collectedFromFiles += @($fileContent | Get-PXMultiXmlDocuments)
             }
         }
         $combined = @()
