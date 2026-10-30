@@ -23,7 +23,7 @@ Describe 'Transform-Xml XProc Processing' {
 </root>
 ========================================================================
 "@
-            $result = $thing | Get-MultiXmlDocuments
+            $result = $thing | Get-PXMultiXmlDocuments
             $result[0] | Should -BeOfType [xml]
             $result[1] | Should -BeOfType [xml]
         }
