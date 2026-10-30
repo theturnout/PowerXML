@@ -668,7 +668,7 @@ function Invoke-MorganaXProc {
 
     # see https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-7.5#passing-arguments-that-contain-quote-characters
     $PSNativeCommandArgumentPassing = 'Legacy'
-    Write-Host "args to processor is $xcArgs"
+    Write-Debug "args to processor is $xcArgs"
 
     # try to force UTF-8
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
