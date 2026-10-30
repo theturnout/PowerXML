@@ -699,7 +699,7 @@ function Transform-PXXml {
                 -PassthroughJava $PassthroughJava `
                 -MergeOutput $MergeOutput `
                 -Namespace $effectiveNamespace `
-                -CollectOutput:$CollectOutput
+                -CollectOutput:($CollectOutput -and -not $MultiplexOutput)
         }
         elseif ($Processor -eq "morganaxproc") {
             # MorganaXProc has no step-run CLI: synthesize a wrapper pipeline (#9)
@@ -726,7 +726,7 @@ function Transform-PXXml {
                     -MergeOutput $MergeOutput `
                     -Namespace $effectiveNamespace `
                     -Configuration $Configuration `
-                    -CollectOutput:$CollectOutput
+                    -CollectOutput:($CollectOutput -and -not $MultiplexOutput)
             }
             finally {
                 if ($stepQName -and $morganaPipelinePath -and (Test-Path $morganaPipelinePath -PathType Leaf)) {
@@ -742,6 +742,7 @@ function Transform-PXXml {
         # multipart/mixed file with X-Port headers per part (#35)
         if ($MultiplexOutput) {
             $parts = @()
+            $collectedFromFiles = @()
             foreach ($doc in @($result)) {
                 $parts += @{ Port = "result"; Content = $doc }
             }
@@ -752,11 +753,17 @@ function Transform-PXXml {
                         $fileContent = Get-Content -Path $filePath -Raw
                         foreach ($doc in @($fileContent | Get-PXMultiXmlDocuments)) {
                             $parts += @{ Port = $key; Content = $doc }
+                            if ($CollectOutput) {
+                                $collectedFromFiles += $doc
+                            }
                         }
                     }
                 }
             }
             ConvertTo-PXMimeMultipart -Parts $parts -Path $MultiplexOutput | Out-Null
+            if ($CollectOutput) {
+                $result = @($result | Where-Object { $null -ne $_ }) + $collectedFromFiles
+            }
         }
         return $result
     }

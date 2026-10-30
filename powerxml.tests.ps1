@@ -799,6 +799,84 @@ Describe 'Multipart MIME' {
     }
 }
 
+Describe 'Multiplex output collection' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    Context '<Name>' -ForEach @(
+        @{ Name = 'xmlcalabash'; Command = 'Invoke-XmlCalabash' }
+        @{ Name = 'morganaxproc'; Command = 'Invoke-MorganaXProc' }
+    ) {
+        BeforeEach {
+            Mock $Command -ModuleName powerxml {
+                if ($Options.EmitStdout) {
+                    '<stdout/>'
+                }
+                if ($CollectOutput) {
+                    foreach ($filePath in $OutPort.Values) {
+                        Get-Content -Path $filePath -Raw | Get-PXMultiXmlDocuments
+                    }
+                }
+            }
+        }
+
+        It 'Preserves routing and return values: collect=<Collect>, multiplex=<Multiplex>, stdout=<EmitStdout>' -ForEach @(
+            foreach ($collect in @($false, $true)) {
+                foreach ($multiplex in @($false, $true)) {
+                    foreach ($emitStdout in @($false, $true)) {
+                        @{ Collect = $collect; Multiplex = $multiplex; EmitStdout = $emitStdout }
+                    }
+                }
+            }
+        ) {
+            $firstPath = Join-Path $TestDrive 'first.xml'
+            $secondPath = Join-Path $TestDrive 'second.xml'
+            Set-Content -Path $firstPath -Value '<first/>'
+            Set-Content -Path $secondPath -Value '<?xml version="1.0"?><second/><?xml version="1.0"?><third/>'
+            $parameters = @{
+                Processor = $Name
+                ClassPath = 'unused'
+                Pipeline = "$PSScriptRoot/test_data/helloWorld.xpl"
+                OutPort = @{ secondary = $firstPath; sequence = $secondPath }
+                Options = @{ EmitStdout = $EmitStdout }
+                CollectOutput = $Collect
+            }
+            $mimePath = Join-Path $TestDrive 'collected.mime'
+            if ($Multiplex) {
+                $parameters.MultiplexOutput = $mimePath
+            }
+
+            $result = @(Transform-PXXml @parameters)
+            $expectedCount = [int]$EmitStdout + (3 * [int]$Collect)
+            $result.Count | Should -Be $expectedCount
+            if ($EmitStdout) {
+                $result[0] | Should -Be '<stdout/>'
+            }
+            if ($Collect) {
+                $resultText = ($result | ForEach-Object { if ($_ -is [System.Xml.XmlDocument]) { $_.OuterXml } else { [string]$_ } }) -join "`n"
+                $resultText | Should -BeLike '*first*'
+                $resultText | Should -BeLike '*second*'
+                $resultText | Should -BeLike '*third*'
+            }
+            if ($Multiplex) {
+                $message = Get-Content -Path $mimePath -Raw
+                $boundary = (($message -split "`n")[0].Trim()).Substring(2)
+                $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+                $parts.Count | Should -Be (3 + [int]$EmitStdout)
+                @($parts | Where-Object { $_.Headers['X-Port'] -eq 'result' }).Count | Should -Be ([int]$EmitStdout)
+                $secondary = @($parts | Where-Object { $_.Headers['X-Port'] -eq 'secondary' })
+                $secondary.Count | Should -Be 1
+                $secondary[0].Content | Should -Be '<first/>'
+                $sequence = @($parts | Where-Object { $_.Headers['X-Port'] -eq 'sequence' })
+                $sequence.Count | Should -Be 2
+                $sequence[0].Content | Should -BeLike '*second*'
+                $sequence[1].Content | Should -BeLike '*third*'
+            }
+        }
+    }
+}
+
 Describe 'Morgana configuration' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
@@ -1063,4 +1141,3 @@ Describe 'Namespace registry' {
         $global:CapturedNamespace.Count | Should -Be 1
     }
 }
-
