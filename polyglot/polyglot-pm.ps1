@@ -11,7 +11,8 @@ $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
   Merges additional package URLs into an in-memory CycloneDX SBOM.
 .DESCRIPTION
   For each purl in AdditionalPackages, matches existing components by
-  type/namespace/name. When a match is found the version is rewritten
+  type/namespace/name within the specified composition's dependencies.
+  When a match is found the version is rewritten
   (in both the component purl and its distribution URL) and hashes are
   removed. Unmatched purls are added as new components and appended to
   the specified composition.
@@ -20,8 +21,8 @@ $MAVEN_CENTRAL = "https://repo.maven.apache.org/maven2"
 .PARAMETER AdditionalPackages
   One or more Package URL strings to merge.
 .PARAMETER CompositionRef
-  The bom-ref of the composition that new (non-matching) components
-  should be added to.
+  The bom-ref of the composition to match and add components to.
+  When omitted, matches against all components.
 #>
 function Merge-AdditionalPackages {
   [CmdletBinding()]
@@ -34,6 +35,8 @@ function Merge-AdditionalPackages {
   )
 
   $ns = $Sbom.DocumentElement.NamespaceURI
+  $compNode = $Sbom.bom.compositions.composition |
+    Where-Object { $_."bom-ref" -eq $CompositionRef }
 
   foreach ($purlString in $AdditionalPackages) {
     $addPurl = ConvertFrom-PkgUri $purlString
@@ -42,6 +45,7 @@ function Merge-AdditionalPackages {
     $matchingComponent = $null
     $existingPurl = $null
     foreach ($comp in @($Sbom.bom.components.component)) {
+      if ($CompositionRef -and $comp."bom-ref" -notin @($compNode.dependencies.dependency.ref)) { continue }
       if (-not $comp.purl) { continue }
       $compPurl = ConvertFrom-PkgUri ([string]$comp.purl)
       if ($compPurl.Type -eq $addPurl.Type -and
@@ -100,8 +104,6 @@ function Merge-AdditionalPackages {
 
       # Add to composition
       if ($CompositionRef) {
-        $compNode = $Sbom.bom.compositions.composition |
-          Where-Object { $_."bom-ref" -eq $CompositionRef }
         if ($compNode) {
           $dep = $Sbom.CreateElement("dependency", $ns)
           $dep.SetAttribute("ref", $bomRef)

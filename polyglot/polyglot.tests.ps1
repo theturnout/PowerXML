@@ -553,6 +553,53 @@ Describe 'Merge-AdditionalPackages' {
         $comp.purl | Should -BeLike '*@3.0.39*'
     }
 
+    It 'Should override the component referenced by the selected composition' {
+        [xml]$sbom = Get-Content -Raw -Path "$PSScriptRoot/../sbom.xml"
+        $unusedComponent = $sbom.bom.components.component |
+            Where-Object { $_."bom-ref" -eq 'xmlcalabash-3.0.54' }
+        $unusedXml = $unusedComponent.OuterXml
+
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages 'pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.39' `
+            -CompositionRef 'pester-tests'
+
+        $selectedComponent = $sbom.bom.components.component |
+            Where-Object { $_."bom-ref" -eq 'xmlcalabash-3.0.40' }
+        $selectedComponent.purl | Should -Be 'pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.39'
+        $selectedComponent.externalReferences.reference.url |
+            Should -Be 'pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.39?filename=xmlcalabash-3.0.39.zip'
+        $selectedComponent.SelectSingleNode("*[local-name()='hashes']") | Should -BeNullOrEmpty
+        $unusedComponent.OuterXml | Should -Be $unusedXml
+    }
+
+    It 'Should include a package that exists only outside the selected composition' {
+        [xml]$sbom = $script:mergeTemplate
+        $composition = $sbom.bom.compositions.composition
+        $composition.dependencies.RemoveAll()
+        $originalXml = $sbom.bom.components.component.OuterXml
+
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages 'pkg:github/xmlcalabash/xmlcalabash3@3.0.39' `
+            -CompositionRef 'test-merge'
+
+        $dependency = @($composition.dependencies.dependency)
+        $dependency.Count | Should -Be 1
+        $includedComponent = $sbom.bom.components.component |
+            Where-Object { $_."bom-ref" -eq $dependency[0].ref }
+        $includedComponent.purl | Should -Be 'pkg:github/xmlcalabash/xmlcalabash3@3.0.39'
+        ($sbom.bom.components.component | Where-Object { $_."bom-ref" -eq 'gh-comp' }).OuterXml |
+            Should -Be $originalXml
+    }
+
+    It 'Should match across all components when no composition is specified' {
+        [xml]$sbom = $script:mergeTemplate
+        Merge-AdditionalPackages -Sbom $sbom `
+            -AdditionalPackages 'pkg:github/xmlcalabash/xmlcalabash3@3.0.39'
+
+        $sbom.bom.components.component.purl | Should -Be 'pkg:github/xmlcalabash/xmlcalabash3@3.0.39'
+        @($sbom.bom.components.component).Count | Should -Be 1
+    }
+
     It 'Should rewrite distribution URL version' {
         [xml]$sbom = $script:mergeTemplate
         Merge-AdditionalPackages -Sbom $sbom `
