@@ -252,6 +252,60 @@ Describe "ConvertTo-PXMimeMultipart" {
         }
     }
 
+    It "Should serialize native JSON values: <Label>" -ForEach @(
+        @{ Label = 'object'; Json = '{"cat":"😸","nested":{"items":[1,true,{"value":"kept"}]}}' }
+        @{ Label = 'array'; Json = '[{"value":1},{"value":2}]' }
+        @{ Label = 'boolean'; Json = 'true' }
+        @{ Label = 'number'; Json = '42' }
+    ) {
+        $native = ConvertTo-PXNativeType -MimePart @{
+            Headers = @{ 'Content-Type' = 'application/json' }
+            Content = $Json
+        }
+        $message = ConvertTo-PXMimeMultipart -Parts @(@{ Port = 'result'; Content = $native })
+        $boundary = (($message -split "`n")[0]).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts[0].Headers['Content-Type'] | Should -Be 'application/json'
+        $parts[0].Content | Should -Be $Json
+        $parts[0].Headers['X-Port'] | Should -Be 'result'
+    }
+
+    It "Should preserve MIME wrapper payloads and headers: <Label>" -ForEach @(
+        @{ Label = 'binary'; ContentType = 'application/octet-stream'; Encoding = 'base64'; Content = 'AAEC/w==' }
+        @{ Label = 'custom'; ContentType = 'application/x-custom; charset=UTF-8'; Encoding = '8bit'; Content = 'custom data ı' }
+        @{ Label = 'empty'; ContentType = 'application/x-custom'; Encoding = $null; Content = '' }
+    ) {
+        $headers = @{ 'Content-Type' = $ContentType }
+        if ($Encoding) { $headers['Content-Transfer-Encoding'] = $Encoding }
+        $native = ConvertTo-PXNativeType -MimePart @{ Headers = $headers; Content = $Content }
+        $message = ConvertTo-PXMimeMultipart -Parts @(@{ Port = 'binary'; Content = $native })
+        $boundary = (($message -split "`n")[0]).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts[0].Headers['Content-Type'] | Should -Be $ContentType
+        $parts[0].Headers['Content-Transfer-Encoding'] | Should -Be $Encoding
+        $parts[0].Headers['X-Port'] | Should -Be 'binary'
+        $parts[0].Content | Should -Be $Content
+        $roundTrip = ConvertTo-PXNativeType -MimePart $parts[0]
+        [Convert]::ToBase64String($roundTrip.BinaryContent) | Should -Be ([Convert]::ToBase64String($native.BinaryContent))
+    }
+
+    It "Should base64 encode a MIME wrapper with only binary content" {
+        $native = [PowerXML.MimeContent]::new()
+        $native.ContentType = 'image/png'
+        $native.BinaryContent = [byte[]]@(0, 1, 2, 255)
+        $message = ConvertTo-PXMimeMultipart -Parts @(@{ Port = 'result'; Content = $native })
+        $boundary = (($message -split "`n")[0]).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts[0].Headers['Content-Type'] | Should -Be 'image/png'
+        $parts[0].Headers['Content-Transfer-Encoding'] | Should -Be 'base64'
+        $parts[0].Content | Should -Be 'AAEC/w=='
+        $roundTrip = ConvertTo-PXNativeType -MimePart $parts[0]
+        [Convert]::ToBase64String($roundTrip.BinaryContent) | Should -Be 'AAEC/w=='
+    }
+
     It "Should write to a file when -Path is given" {
         $mimePath = Join-Path $TestDrive "written.mime"
         $returned = ConvertTo-PXMimeMultipart -Path $mimePath -Parts @(

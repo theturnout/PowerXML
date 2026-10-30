@@ -101,8 +101,9 @@ function Parse-PXMimeMultipart {
     a generated boundary, a Content-Type header per part, and an X-Port header
     naming the port the part belongs to (so the message can be routed back to
     ports as input). XML documents and XML strings use application/xml content
-    type. Returns the message as a string, or writes it to a file when -Path
-    is given.
+    type. Native JSON objects are serialized as application/json; MIME wrappers
+    retain their payload, content type, and transfer encoding. Returns the message
+    as a string, or writes it to a file when -Path is given.
 .PARAMETER Parts
     One or more objects with Port, Content, and optional ContentType properties.
 .PARAMETER Path
@@ -120,15 +121,35 @@ function ConvertTo-PXMimeMultipart {
     $boundary = "PowerXML-$([guid]::NewGuid().ToString('N'))"
     $lines = @()
     foreach ($part in $Parts) {
-        $content = if ($part.Content -is [System.Xml.XmlDocument]) { $part.Content.OuterXml } else { [string]$part.Content }
-        $contentType = if ($part.ContentType) {
-            $part.ContentType
+        $transferEncoding = $null
+        $contentType = "text/plain"
+        if ($part.Content -is [PowerXML.MimeContent]) {
+            $wrapper = $part.Content
+            $contentType = if ($wrapper.Headers['Content-Type']) { $wrapper.Headers['Content-Type'] } elseif ($wrapper.ContentType) { $wrapper.ContentType } else { "application/octet-stream" }
+            $transferEncoding = $wrapper.Headers['Content-Transfer-Encoding']
+            if ($null -ne $wrapper.RawContent) {
+                $content = $wrapper.RawContent
+            }
+            else {
+                $content = [Convert]::ToBase64String($wrapper.BinaryContent)
+                $transferEncoding = "base64"
+            }
         }
         elseif ($part.Content -is [System.Xml.XmlDocument]) {
-            "application/xml"
+            $content = $part.Content.OuterXml
+            $contentType = "application/xml"
+        }
+        elseif ($part.Content -is [System.Management.Automation.PSCustomObject] -or
+                $part.Content -is [System.Collections.IDictionary] -or
+                $part.Content -is [array] -or $part.Content -is [System.ValueType]) {
+            $content = ConvertTo-Json -InputObject $part.Content -Depth 100 -Compress
+            $contentType = "application/json"
         }
         else {
-            "text/plain"
+            $content = [string]$part.Content
+        }
+        if ($part.ContentType) {
+            $contentType = $part.ContentType
         }
         if (-not $part.ContentType -and $part.Content -is [string]) {
             $reader = $null
@@ -153,6 +174,9 @@ function ConvertTo-PXMimeMultipart {
         }
         $lines += "--$boundary"
         $lines += "Content-Type: $contentType"
+        if ($transferEncoding) {
+            $lines += "Content-Transfer-Encoding: $transferEncoding"
+        }
         if ($part.Port) {
             $lines += "X-Port: $($part.Port)"
         }
