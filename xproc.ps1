@@ -117,7 +117,13 @@ function ConvertTo-PXXmlConfig {
         "<$Root xmlns=`"$Namespace`">"
     )
     foreach ($key in ($Config.Keys | Sort-Object)) {
-        $lines += Convert-ConfigNode -Name $key -Value $Config[$key] -Depth 1
+        if ($key -like '@*') {
+            $attrName = $key.TrimStart('@')
+            $lines[1] = $lines[1].Substring(0, $lines[1].Length - 1) + " $attrName=`"$(Escape-XmlText $Config[$key])`">"
+        }
+        else {
+            $lines += Convert-ConfigNode -Name $key -Value $Config[$key] -Depth 1
+        }
     }
     $lines += "</$Root>"
 
