@@ -100,7 +100,7 @@ function Parse-PXMimeMultipart {
     Produces the same multipart/mixed format that Parse-PXMimeMultipart reads:
     a generated boundary, a Content-Type header per part, and an X-Port header
     naming the port the part belongs to (so the message can be routed back to
-    ports as input). XML documents are serialized with application/xml content
+    ports as input). XML documents and XML strings use application/xml content
     type. Returns the message as a string, or writes it to a file when -Path
     is given.
 .PARAMETER Parts
@@ -129,6 +129,27 @@ function ConvertTo-PXMimeMultipart {
         }
         else {
             "text/plain"
+        }
+        if (-not $part.ContentType -and $part.Content -is [string]) {
+            $reader = $null
+            try {
+                $settings = [System.Xml.XmlReaderSettings]::new()
+                $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+                $settings.XmlResolver = $null
+                $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($content), $settings)
+                $xml = [System.Xml.XmlDocument]::new()
+                $xml.XmlResolver = $null
+                $xml.Load($reader)
+                if ($xml.DocumentElement) {
+                    $contentType = "application/xml"
+                }
+            }
+            catch [System.Xml.XmlException] {
+                $contentType = "text/plain"
+            }
+            finally {
+                if ($reader) { $reader.Dispose() }
+            }
         }
         $lines += "--$boundary"
         $lines += "Content-Type: $contentType"
@@ -523,4 +544,3 @@ function ConvertTo-HashString {
     $stringAsStream.Position = 0
     return (Get-FileHash -InputStream $stringAsStream).Hash
 }
-

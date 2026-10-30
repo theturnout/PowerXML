@@ -222,11 +222,34 @@ Describe "ConvertTo-PXMimeMultipart" {
 
         $parts.Count | Should -Be 2
         $parts[0].Headers["X-Port"] | Should -Be "source"
-        $parts[0].Headers["Content-Type"] | Should -Be "text/plain"
+        $parts[0].Headers["Content-Type"] | Should -Be "application/xml"
         $parts[0].Content | Should -Be "<a>1</a>"
         $parts[1].Headers["X-Port"] | Should -Be "stylesheet"
         $parts[1].Headers["Content-Type"] | Should -Be "application/xml"
         $parts[1].Content | Should -Be "<b>2</b>"
+    }
+
+    It "Should determine XML media types without changing content: <Label>" -ForEach @(
+        @{ Label = 'XML declaration'; Content = '<?xml version="1.0"?><root/>'; ContentType = $null; Expected = 'application/xml' }
+        @{ Label = 'XML without declaration'; Content = '  <root xmlns="urn:test">value</root>  '; ContentType = $null; Expected = 'application/xml' }
+        @{ Label = 'plain text'; Content = 'Hello, World!'; ContentType = $null; Expected = 'text/plain' }
+        @{ Label = 'malformed XML'; Content = '<root>'; ContentType = $null; Expected = 'text/plain' }
+        @{ Label = 'explicit text type'; Content = '<root/>'; ContentType = 'text/plain'; Expected = 'text/plain' }
+        @{ Label = 'explicit XML type'; Content = '<root/>'; ContentType = 'text/xml; charset=UTF-8'; Expected = 'text/xml; charset=UTF-8' }
+        @{ Label = 'prohibited DTD'; Content = '<!DOCTYPE root [<!ENTITY value "expanded">]><root>&value;</root>'; ContentType = $null; Expected = 'text/plain' }
+    ) {
+        $message = ConvertTo-PXMimeMultipart -Parts @(
+            @{ Port = 'result'; Content = $Content; ContentType = $ContentType }
+        )
+        $boundary = (($message -split "`n")[0].Trim()).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+        $parts[0].Headers['Content-Type'] | Should -Be $Expected
+        $parts[0].Content | Should -Be $Content.Trim()
+        if ($Expected -eq 'application/xml') {
+            $native = ConvertTo-PXNativeType -MimePart $parts[0]
+            $native | Should -BeOfType [System.Xml.XmlDocument]
+            $native.DocumentElement.LocalName | Should -Be 'root'
+        }
     }
 
     It "Should write to a file when -Path is given" {

@@ -864,6 +864,10 @@ Describe 'Multiplex output collection' {
                 $boundary = (($message -split "`n")[0].Trim()).Substring(2)
                 $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
                 $parts.Count | Should -Be (3 + [int]$EmitStdout)
+                foreach ($part in $parts) {
+                    $part.Headers['Content-Type'] | Should -Be 'application/xml'
+                    (ConvertTo-PXNativeType -MimePart $part) | Should -BeOfType [System.Xml.XmlDocument]
+                }
                 @($parts | Where-Object { $_.Headers['X-Port'] -eq 'result' }).Count | Should -Be ([int]$EmitStdout)
                 $secondary = @($parts | Where-Object { $_.Headers['X-Port'] -eq 'secondary' })
                 $secondary.Count | Should -Be 1
