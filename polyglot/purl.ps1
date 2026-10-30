@@ -84,6 +84,13 @@ function Set-PurlVersion {
     $result = $PurlString -replace "(?<=@)${escaped}(?=[?#]|$)", $NewVersion
     # Replace version in qualifier values (e.g. filename=name-VERSION.ext)
     # Boundary: preceded by non-alphanumeric, followed by .non-digit, non-version-char, or end
-    $result = $result -replace "(?<=[^a-zA-Z0-9])${escaped}(?=\.[^0-9]|[^0-9.]|$)", $NewVersion
+    $queryStart = $result.IndexOf('?')
+    if ($queryStart -ge 0) {
+        $fragmentStart = $result.IndexOf('#', $queryStart)
+        if ($fragmentStart -lt 0) { $fragmentStart = $result.Length }
+        $query = $result.Substring($queryStart, $fragmentStart - $queryStart)
+        $query = $query -replace "(?<=[^a-zA-Z0-9])${escaped}(?=\.[^0-9]|[^0-9.]|$)", $NewVersion
+        $result = $result.Substring(0, $queryStart) + $query + $result.Substring($fragmentStart)
+    }
     return $result
 }
