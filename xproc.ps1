@@ -190,6 +190,8 @@ Effective prefix-to-URI namespace map (registry merged with the -Namespace param
 Resolved input port bindings (port name to value).
 .PARAMETER OutPort
 Output port bindings (port name to path). When empty, a conventional primary result port is declared.
+.PARAMETER Options
+Option bindings declared on the wrapper and forwarded to the wrapped step.
 .OUTPUTS
 The path to the generated temporary pipeline file.
 #>
@@ -200,7 +202,8 @@ function New-PXStepShell {
         [string]$Step,
         [hashtable]$Namespaces,
         [hashtable]$InPort,
-        [hashtable]$OutPort
+        [hashtable]$OutPort,
+        [hashtable]$Options
     )
     $xprocNamespace = "http://www.w3.org/ns/xproc"
     $stepPrefix, $stepLocal = $Step -split ":", 2
@@ -248,6 +251,16 @@ function New-PXStepShell {
         }
     }
 
+    $optionLines = @()
+    $withOptionLines = @()
+    if ($Options) {
+        foreach ($optionName in $Options.Keys) {
+            $escapedName = [System.Security.SecurityElement]::Escape([string]$optionName)
+            $optionLines += "    <p:option name=`"$escapedName`" required=`"true`"/>"
+            $withOptionLines += "        <p:with-option name=`"$escapedName`" select=`"`$$escapedName`"/>"
+        }
+    }
+
     # Explicit wiring for the non-primary inputs; the primary input and output connect implicitly
     $stepLines = @("    <$stepPrefix`:$stepLocal name=`"wrapped-step`">")
     foreach ($portName in $pipedInputNames) {
@@ -255,15 +268,25 @@ function New-PXStepShell {
         $stepLines += "            <p:pipe step=`"pipeline`" port=`"$portName`"/>"
         $stepLines += "        </p:with-input>"
     }
+    $stepLines += $withOptionLines
     $stepLines += "    </$stepPrefix`:$stepLocal>"
 
     $namespaceDecl = if ($stepPrefix -eq "p") { "" } else { " xmlns:$stepPrefix=`"$prefixUri`"" }
+    if ($Options -and $Namespaces) {
+        foreach ($prefix in $Namespaces.Keys) {
+            if ($prefix -ne "p" -and $prefix -ne $stepPrefix) {
+                $uri = [System.Security.SecurityElement]::Escape([string]$Namespaces[$prefix])
+                $namespaceDecl += " xmlns:$prefix=`"$uri`""
+            }
+        }
+    }
     $shellLines = @(
         '<?xml version="1.0" encoding="UTF-8"?>',
         "<p:declare-step xmlns:p=`"$xprocNamespace`"$namespaceDecl name=`"pipeline`" version=`"3.0`">"
     )
     $shellLines += $inputLines
     $shellLines += $outputLines
+    $shellLines += $optionLines
     $shellLines += $stepLines
     $shellLines += "</p:declare-step>"
 

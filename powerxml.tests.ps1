@@ -467,15 +467,46 @@ Describe 'Direct step execution' {
             return "ok"
         }
 
-        Transform-PXXml -Processor "morganaxproc" -Step "p:xslt" -InPort @{ source = "in.xml"; stylesheet = "style.xsl" } -OutPort @{ result = "out.xml" }
+        Transform-PXXml -Processor "morganaxproc" -ClassPath "fake.jar" -Step "p:xslt" -InPort @{ source = "in.xml"; stylesheet = "style.xsl" } -OutPort @{ result = "out.xml" }
 
         $global:CapturedShell | Should -BeLike "*<p:xslt*"
         $global:CapturedShell | Should -BeLike "*<p:input port=`"source`" primary=`"true`"*"
         $global:CapturedShell | Should -BeLike "*<p:with-input port=`"stylesheet`">*"
         $global:CapturedShell | Should -BeLike "*<p:pipe step=`"pipeline`" port=`"stylesheet`"/>*"
         $global:CapturedShell | Should -BeLike "*<p:output port=`"result`" primary=`"true`"*"
+        $global:CapturedShell | Should -Not -BeLike "*<p:option *"
+        $global:CapturedShell | Should -Not -BeLike "*<p:with-option *"
         # The temporary shell should be cleaned up after the run
         Test-Path $global:CapturedShellPath -PathType Leaf | Should -Be $false
+    }
+
+    It "Should declare and forward morganaxproc step options" {
+        $global:CapturedShell = $null
+        $global:CapturedOptions = $null
+        Mock Invoke-MorganaXProc -ModuleName powerxml {
+            $global:CapturedShell = Get-Content -Path $Pipeline -Raw
+            $global:CapturedOptions = $Options
+            return "ok"
+        }
+        $options = @{ href = 'input.xml?name="quoted"&other=1'; 'ex:mode' = 'custom' }
+
+        Transform-PXXml -Processor "morganaxproc" -ClassPath "fake.jar" -Step "p:load" `
+            -Options $options -Namespace @{ ex = "http://example.com/options" }
+
+        [xml]$shell = $global:CapturedShell
+        $ns = [System.Xml.XmlNamespaceManager]::new($shell.NameTable)
+        $ns.AddNamespace("p", "http://www.w3.org/ns/xproc")
+        $shell.DocumentElement.GetNamespaceOfPrefix("ex") | Should -Be "http://example.com/options"
+        @($shell.SelectNodes("/p:declare-step/p:option", $ns)).Count | Should -Be 2
+        @($shell.SelectNodes("/p:declare-step/p:load/p:with-option", $ns)).Count | Should -Be 2
+        foreach ($name in $options.Keys) {
+            $declaration = $shell.SelectSingleNode("/p:declare-step/p:option[@name='$name']", $ns)
+            $declaration.required | Should -Be "true"
+            $binding = $shell.SelectSingleNode("/p:declare-step/p:load/p:with-option[@name='$name']", $ns)
+            $binding.select | Should -Be ('$' + $name)
+            $global:CapturedOptions[$name] | Should -Be $options[$name]
+        }
+        $global:CapturedShell | Should -Not -BeLike "*quoted*"
     }
 }
 
@@ -1032,5 +1063,4 @@ Describe 'Namespace registry' {
         $global:CapturedNamespace.Count | Should -Be 1
     }
 }
-
 

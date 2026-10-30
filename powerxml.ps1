@@ -708,7 +708,8 @@ function Transform-PXXml {
                 $morganaPipelinePath = New-PXStepShell -Step $stepQName `
                     -Namespaces $effectiveNamespace `
                     -InPort $inPortProcessed `
-                    -OutPort $OutPort
+                    -OutPort $OutPort `
+                    -Options $Options
             }
             try {
                 $result = Invoke-MorganaXProc `
