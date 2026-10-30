@@ -123,24 +123,40 @@ function Install-Package {
             Write-Warning "ZipRoot '$ZipRoot' was specified, but the archive has no wrapper directory; extracting directly into '$canonicalName'."
         }
 
-        if ($archiveRoot) {
-            $stagingDir = Join-Path $LocalRepository "install-$(New-Guid)"
-            $null = New-Item -ItemType Directory -Path $stagingDir -ErrorAction Stop
-            try {
-                Expand-Archive -Path $DownloadedPath -DestinationPath $stagingDir -Force -ErrorAction Stop
-                $extractedDir = Join-Path $stagingDir $archiveRoot
-                Move-Item -LiteralPath $extractedDir -Destination $targetDir -ErrorAction Stop
+        $archivePath = $DownloadedPath
+        $temporaryZip = $null
+        try {
+            # Windows PowerShell 5.1 Expand-Archive accepts only the .zip extension.
+            if ($extension -eq ".nupkg") {
+                $temporaryZip = Join-Path ([System.IO.Path]::GetTempPath()) "$(New-Guid).zip"
+                Copy-Item -LiteralPath $DownloadedPath -Destination $temporaryZip -ErrorAction Stop
+                $archivePath = $temporaryZip
             }
-            finally {
-                Remove-Item -LiteralPath $stagingDir -Recurse -Force
+
+            if ($archiveRoot) {
+                $stagingDir = Join-Path $LocalRepository "install-$(New-Guid)"
+                $null = New-Item -ItemType Directory -Path $stagingDir -ErrorAction Stop
+                try {
+                    Expand-Archive -Path $archivePath -DestinationPath $stagingDir -Force -ErrorAction Stop
+                    $extractedDir = Join-Path $stagingDir $archiveRoot
+                    Move-Item -LiteralPath $extractedDir -Destination $targetDir -ErrorAction Stop
+                }
+                finally {
+                    Remove-Item -LiteralPath $stagingDir -Recurse -Force
+                }
+            }
+            else {
+                # No wrapper directory in the archive: extract its contents directly
+                # into the canonical directory instead of spraying them into the
+                # repository root
+                Expand-Archive -Path $archivePath -DestinationPath $targetDir -Force
+                Write-Host "Archive has no wrapper directory; extracted contents into '$canonicalName'."
             }
         }
-        else {
-            # No wrapper directory in the archive: extract its contents directly
-            # into the canonical directory instead of spraying them into the
-            # repository root
-            Expand-Archive -Path $DownloadedPath -DestinationPath $targetDir -Force
-            Write-Host "Archive has no wrapper directory; extracted contents into '$canonicalName'."
+        finally {
+            if ($temporaryZip -and (Test-Path -LiteralPath $temporaryZip)) {
+                Remove-Item -LiteralPath $temporaryZip -Force
+            }
         }
 
     }

@@ -405,15 +405,60 @@ Describe 'Install-Package' {
                 Where-Object { $_.Name -ceq "mylib-7.7.7" }).Name | Should -Be "mylib-7.7.7"
         }
 
-        It 'Should handle nupkg archives the same way' {
-            $nupkg = Join-Path $script:LocalRepo "mylib-6.6.6.nupkg"
-            Compress-Archive -Path (Join-Path $script:flatBase "*") -DestinationPath $nupkg -Force
+        It 'Should extract a <Layout> nupkg using a temporary zip and clean it up' -TestCases @(
+            @{ Layout = 'flat'; ArchiveVariable = 'flatZip'; Payload = 'root-file.txt'; Content = 'root' }
+            @{ Layout = 'wrapped'; ArchiveVariable = 'wrapperZip'; Payload = 'lib.jar'; Content = 'jar content' }
+        ) {
+            param($Layout, $ArchiveVariable, $Payload, $Content)
 
-            Install-Package -DownloadedPath $nupkg `
+            $nupkg = Join-Path $script:LocalRepo "mylib-6.6.6.nupkg"
+            Copy-Item -Path (Get-Variable -Name $ArchiveVariable -ValueOnly) -Destination $nupkg
+            $originalHash = (Get-FileHash $nupkg).Hash
+            $extraction = @{ Path = $null }
+            Mock Expand-Archive -ModuleName polyglot -MockWith {
+                param($Path, $DestinationPath)
+                $extraction.Path = $Path
+                if ([System.IO.Path]::GetExtension($Path) -ne '.zip') {
+                    throw 'Only .zip archives are supported'
+                }
+                Microsoft.PowerShell.Archive\Expand-Archive -Path $Path -DestinationPath $DestinationPath -Force -ErrorAction Stop
+            }
+
+            $result = Install-Package -DownloadedPath $nupkg `
                 -Name "mylib" -Version "6.6.6" `
                 -LocalRepository $script:LocalRepo
 
-            Test-Path (Join-Path $script:LocalRepo "mylib-6.6.6/root-file.txt") | Should -Be $true
+            $result | Should -Be (Join-Path $script:LocalRepo "mylib-6.6.6")
+            Get-Content (Join-Path $result $Payload) -Raw | Should -Be $Content
+            $extraction.Path | Should -Not -BeNullOrEmpty
+            Test-Path -LiteralPath $extraction.Path | Should -Be $false
+            (Get-FileHash $nupkg).Hash | Should -Be $originalHash
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 1
+        }
+
+        It 'Should clean up the temporary zip when <Layout> nupkg extraction fails' -TestCases @(
+            @{ Layout = 'flat'; ArchiveVariable = 'flatZip' }
+            @{ Layout = 'wrapped'; ArchiveVariable = 'wrapperZip' }
+        ) {
+            param($Layout, $ArchiveVariable)
+
+            $nupkg = Join-Path $script:LocalRepo "mylib-6.6.6.nupkg"
+            Copy-Item -Path (Get-Variable -Name $ArchiveVariable -ValueOnly) -Destination $nupkg
+            $extraction = @{ Path = $null }
+            Mock Expand-Archive -ModuleName polyglot -MockWith {
+                param($Path)
+                $extraction.Path = $Path
+                throw 'Extraction failed'
+            }
+
+            { Install-Package -DownloadedPath $nupkg `
+                    -Name "mylib" -Version "6.6.6" `
+                    -LocalRepository $script:LocalRepo } | Should -Throw '*Extraction failed*'
+
+            $extraction.Path | Should -Not -BeNullOrEmpty
+            Test-Path -LiteralPath $extraction.Path | Should -Be $false
+            Test-Path -LiteralPath $nupkg | Should -Be $true
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 0
         }
     }
 }
