@@ -87,6 +87,9 @@ function Merge-AdditionalPackages {
     else {
       # Add new component
       $bomRef = "$($addPurl.Name)-additional"
+      while (@($Sbom.bom.components.component | Where-Object { $_.'bom-ref' -eq $bomRef }).Count -gt 0) {
+        $bomRef = "$($addPurl.Name)-additional-$([guid]::NewGuid().ToString('N'))"
+      }
       $component = $Sbom.CreateElement("component", $ns)
       $component.SetAttribute("type", "library")
       $component.SetAttribute("bom-ref", $bomRef)
