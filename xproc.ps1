@@ -324,7 +324,8 @@ function Invoke-XmlCalabash {
         [array]$PassthroughJava,
         [bool]$MergeOutput = $true,
         [hashtable]$Namespace,
-        [switch]$CollectOutput
+        [switch]$CollectOutput,
+        $Configuration
     )
     if ($ClassPath) {
         # The caller owns the classpath entirely; no processor discovery (#8)
@@ -431,23 +432,26 @@ function Invoke-XmlCalabash {
     }
 
     
-    # create configuration file
-    # Define the XML content as a here-string
-    $xmlContent = @"
-<?xml version="1.0" encoding="UTF-8"?>
-<cc:xml-calabash xmlns:cc="https://xmlcalabash.com/ns/configuration" version="1.0">
-    <cc:mimetype content-type="text/plain" extensions="ixml pdf inp" />
-</cc:xml-calabash>
-"@
-    
-    # Create a temporary file with .xml extension
-    $tempFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xml")
-    
-    # Write the XML content to the temporary file using UTF-8 encoding
-    $null = [System.IO.File]::WriteAllText($tempFile, $xmlContent, [System.Text.Encoding]::UTF8)
-    
-    if ($tempFile) {
-        $xcArgs += @("--configuration:`"$tempFile`"")
+    $configArg = $null
+    if ($Configuration -is [string] -and $Configuration) {
+        $configArg = $Configuration
+    }
+    elseif ($Configuration -is [hashtable] -or -not $ClassPath) {
+        $effectiveConfig = @{ '@version' = '1.0' }
+        if (-not $ClassPath) {
+            $effectiveConfig.mimetype = @{ '@content-type' = 'text/plain'; '@extensions' = 'ixml pdf inp' }
+        }
+        if ($Configuration -is [hashtable]) {
+            foreach ($key in $Configuration.Keys) {
+                $effectiveConfig[$key] = $Configuration[$key]
+            }
+        }
+        $configArg = ConvertTo-PXXmlConfig -Config $effectiveConfig `
+            -Root "xml-calabash" `
+            -Namespace "https://xmlcalabash.com/ns/configuration"
+    }
+    if ($configArg) {
+        $xcArgs += @("--configuration:`"$configArg`"")
     }
 
     if ($Step) {

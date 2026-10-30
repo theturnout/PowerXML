@@ -688,6 +688,7 @@ function Transform-PXXml {
             $result = Invoke-XmlCalabash `
                 -Paths $Paths `
                 -ClassPath $ClassPath `
+                -Configuration $Configuration `
                 -InputObject $InputObject `
                 -Step $stepQName `
                 -Pipeline $pipelinePath `

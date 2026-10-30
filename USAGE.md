@@ -308,8 +308,8 @@ Explicit `-PackageResolution` always wins over the session default. Re-register 
 
 `-Configuration` accepts three forms for the XProc processors:
 
-- **Omitted** — MorganaXProc gets an auto-generated config: the XSLT/XQuery connector is auto-detected from the Saxon jar on the classpath (Saxon 12.3+ uses `Saxon12-3`, earlier 12.x uses `Saxon12`, etc.) and the NineML/MarkupBlitz invisible-XML connectors are registered (harmless when their jars are absent). XML Calabash generates its own mimetype configuration internally.
-- **A hashtable** — settings 1-1 with the engine's XML/JSON shape, merged over the auto-detected defaults (explicit entries win):
+- **Omitted** — MorganaXProc gets an auto-generated config: the XSLT/XQuery connector is auto-detected from the Saxon jar on the classpath (Saxon 12.3+ uses `Saxon12-3`, earlier 12.x uses `Saxon12`, etc.) and the NineML/MarkupBlitz invisible-XML connectors are registered (harmless when their jars are absent). XML Calabash generates its own mimetype configuration internally. With `-ClassPath`, neither processor generates a default configuration.
+- **A hashtable** — settings 1-1 with the engine's XML/JSON shape, merged over the auto-detected defaults (explicit entries win). XML Calabash also accepts explicit hashtables with `-ClassPath`, without injecting the default mimetype settings:
 
 ```powershell
 Transform-PXXml 

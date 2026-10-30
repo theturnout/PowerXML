@@ -379,6 +379,102 @@ Describe 'Transform-PXXml parameter handling' {
     }
 }
 
+Describe 'XML Calabash configuration' {
+    BeforeAll {
+        Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
+    }
+
+    BeforeEach {
+        $global:CalabashTestPath = Join-Path $TestDrive 'xmlcalabash'
+        New-Item -ItemType Directory -Path $global:CalabashTestPath -Force | Out-Null
+        $global:CalabashArgs = @()
+        Mock Copy-SoftwareComposition -ModuleName powerxml { @($global:CalabashTestPath) }
+        Mock Get-PXClassPath -ModuleName powerxml { '' }
+        Mock java -ModuleName powerxml {
+            $global:CalabashArgs = @($args)
+            $global:LASTEXITCODE = 0
+            '<result/>'
+        }
+    }
+
+    AfterEach {
+        foreach ($arg in $global:CalabashArgs) {
+            if ($arg -like '--configuration:*') {
+                $path = $arg.Substring('--configuration:'.Length).Trim('"')
+                Remove-Item -LiteralPath $path -ErrorAction SilentlyContinue
+            }
+        }
+        Remove-Variable CalabashTestPath, CalabashArgs -Scope Global
+    }
+
+    It 'Uses an explicit configuration file unchanged (manual classpath: <Manual>)' -TestCases @(
+        @{ Manual = $true }
+        @{ Manual = $false }
+    ) {
+        param($Manual)
+        $configPath = Join-Path $TestDrive 'custom config.xml'
+        $config = '<xml-calabash xmlns="https://xmlcalabash.com/ns/configuration" version="1.0"/>'
+        Set-Content -LiteralPath $configPath -Value $config
+        $parameters = if ($Manual) { @{ ClassPath = 'caller.jar' } } else { @{} }
+        Mock New-TemporaryFile -ModuleName powerxml { throw 'Unexpected generated configuration' }
+
+        Transform-PXXml -Processor xmlcalabash -Step p:identity -Configuration $configPath @parameters
+
+        @($global:CalabashArgs | Where-Object { $_ -like '--configuration:*' }).Count | Should -Be 1
+        $global:CalabashArgs | Should -Contain "--configuration:`"$configPath`""
+        (Get-Content -LiteralPath $configPath -Raw).Trim() | Should -Be $config
+    }
+
+    It 'Honors explicit configuration settings (manual classpath: <Manual>)' -TestCases @(
+        @{ Manual = $true }
+        @{ Manual = $false }
+    ) {
+        param($Manual)
+        $parameters = if ($Manual) { @{ ClassPath = 'caller.jar' } } else { @{} }
+        $config = @{ mimetype = @{ '@content-type' = 'application/custom'; '@extensions' = 'custom' } }
+
+        Transform-PXXml -Processor xmlcalabash -Step p:identity -Configuration $config @parameters
+
+        $configArgs = @($global:CalabashArgs | Where-Object { $_ -like '--configuration:*' })
+        $configArgs.Count | Should -Be 1
+        $configPath = $configArgs[0].Substring('--configuration:'.Length).Trim('"')
+        [xml]$xml = Get-Content -LiteralPath $configPath -Raw
+        $xml.DocumentElement.LocalName | Should -Be 'xml-calabash'
+        $xml.DocumentElement.NamespaceURI | Should -Be 'https://xmlcalabash.com/ns/configuration'
+        $xml.DocumentElement.version | Should -Be '1.0'
+        $xml.DocumentElement.mimetype.'content-type' | Should -Be 'application/custom'
+        $xml.DocumentElement.mimetype.extensions | Should -Be 'custom'
+    }
+
+    It 'Does not generate configuration for a manual classpath without explicit configuration' {
+        Mock New-TemporaryFile -ModuleName powerxml { throw 'Unexpected generated configuration' }
+
+        Transform-PXXml -Processor xmlcalabash -ClassPath 'caller.jar' -Step p:identity
+
+        @($global:CalabashArgs | Where-Object { $_ -like '--configuration:*' }).Count | Should -Be 0
+    }
+
+    It 'Does not inject default mimetypes into explicit manual-classpath configuration' {
+        Transform-PXXml -Processor xmlcalabash -ClassPath 'caller.jar' -Step p:identity -Configuration @{}
+
+        $configArg = $global:CalabashArgs | Where-Object { $_ -like '--configuration:*' }
+        $configPath = $configArg.Substring('--configuration:'.Length).Trim('"')
+        [xml]$xml = Get-Content -LiteralPath $configPath -Raw
+        $xml.DocumentElement.ChildNodes.Count | Should -Be 0
+    }
+
+    It 'Preserves the default mimetype configuration for a managed classpath' {
+        Transform-PXXml -Processor xmlcalabash -Step p:identity
+
+        $configArg = $global:CalabashArgs | Where-Object { $_ -like '--configuration:*' }
+        $configPath = $configArg.Substring('--configuration:'.Length).Trim('"')
+        [xml]$xml = Get-Content -LiteralPath $configPath -Raw
+        $xml.DocumentElement.version | Should -Be '1.0'
+        $xml.DocumentElement.mimetype.'content-type' | Should -Be 'text/plain'
+        $xml.DocumentElement.mimetype.extensions | Should -Be 'ixml pdf inp'
+    }
+}
+
 Describe 'Get-PXClassPath' {
     It 'Should exist as a function' {
         Get-Command Get-PXClassPath | Should -Not -BeNullOrEmpty
