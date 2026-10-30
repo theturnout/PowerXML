@@ -597,7 +597,8 @@ function Transform-PXXml {
                 foreach ($mimePart in @(Parse-PXMimeMultipart -MimeString $mimeString -Boundary $boundary)) {
                     $partPort = if ($mimePart.Headers["X-Port"]) { $mimePart.Headers["X-Port"] } else { $key }
                     $contentType = $mimePart.Headers["Content-Type"]
-                    $extension = if ($contentType -and ($contentType -like "application/xml" -or $contentType -like "*+xml")) { ".xml" } else { ".txt" }
+                    $mediaType = if ($contentType) { ($contentType -split ';', 2)[0].Trim() } else { '' }
+                    $extension = if ($mediaType -in @('application/xml', 'text/xml') -or $mediaType -like '*+xml') { '.xml' } else { '.txt' }
                     $partFile = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, $extension)
                     Set-Content -Path $partFile -Value $mimePart.Content -Encoding UTF8
                     if ($expandedInPort.ContainsKey($partPort)) {
