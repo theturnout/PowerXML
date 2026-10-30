@@ -326,6 +326,46 @@ Describe 'Install-Package' {
             Test-Path (Join-Path $script:LocalRepo "root-file.txt") | Should -Be $false
         }
 
+        It 'Should preserve an installed package whose name matches the archive wrapper' {
+            $existingDir = Join-Path $script:LocalRepo "mywrapper-9.9.9"
+            New-Item -ItemType Directory -Path $existingDir | Out-Null
+            Set-Content -Path (Join-Path $existingDir "lib.jar") -Value "original jar" -NoNewline
+            Set-Content -Path (Join-Path $existingDir "existing.txt") -Value "existing" -NoNewline
+
+            $result = Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mylib" -Version "9.9.9" `
+                -LocalRepository $script:LocalRepo
+
+            Get-Content (Join-Path $existingDir "lib.jar") -Raw | Should -Be "original jar"
+            Get-Content (Join-Path $existingDir "existing.txt") -Raw | Should -Be "existing"
+            Get-Content (Join-Path $result "lib.jar") -Raw | Should -Be "jar content"
+            Test-Path (Join-Path $result "existing.txt") | Should -Be $false
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 2
+        }
+
+        It 'Should clean up staging when wrapper extraction fails' {
+            Mock Expand-Archive -ModuleName polyglot -MockWith {
+                Set-Content -Path (Join-Path $DestinationPath "partial.txt") -Value "partial"
+                throw "Extraction failed"
+            }
+
+            { Install-Package -DownloadedPath $script:wrapperZip `
+                    -Name "mylib" -Version "9.9.9" `
+                    -LocalRepository $script:LocalRepo } | Should -Throw "*Extraction failed*"
+
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 0
+            Test-Path $script:wrapperZip | Should -Be $true
+        }
+
+        It 'Should install a wrapper that already has the canonical name' {
+            $result = Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mywrapper" -Version "9.9.9" `
+                -LocalRepository $script:LocalRepo
+
+            Get-Content (Join-Path $result "lib.jar") -Raw | Should -Be "jar content"
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 1
+        }
+
         It 'Should warn and use the detected root when ZipRoot disagrees' {
             Install-Package -DownloadedPath $script:wrapperZip `
                 -Name "mylib" -Version "9.9.9" `

@@ -124,29 +124,15 @@ function Install-Package {
         }
 
         if ($archiveRoot) {
-            Expand-Archive -Path $DownloadedPath -DestinationPath $LocalRepository -Force
-            if ($archiveRoot -ceq $canonicalName) {
-                Write-Host "Archive root '$archiveRoot' matches the canonical name; no renaming needed."
+            $stagingDir = Join-Path $LocalRepository "install-$(New-Guid)"
+            $null = New-Item -ItemType Directory -Path $stagingDir -ErrorAction Stop
+            try {
+                Expand-Archive -Path $DownloadedPath -DestinationPath $stagingDir -Force -ErrorAction Stop
+                $extractedDir = Join-Path $stagingDir $archiveRoot
+                Move-Item -LiteralPath $extractedDir -Destination $targetDir -ErrorAction Stop
             }
-            else {
-                # Handle rename: the directory inside the zip may not match the canonical name
-                $extractedDir = Join-Path $LocalRepository $archiveRoot
-                if (Test-Path $extractedDir -PathType Container) {
-                    Write-Host "Renaming extracted directory '$archiveRoot' to '$canonicalName'"
-                    if ($archiveRoot -ieq $canonicalName) {
-                        # Case-only rename: WinPS 5.1 on NTFS treats these as the same path.
-                        # Use a two-step rename through a temporary name.
-                        $tempName = "$canonicalName-renaming"
-                        Rename-Item -Path $extractedDir -NewName $tempName -Force
-                        Rename-Item -Path (Join-Path $LocalRepository $tempName) -NewName $canonicalName -Force
-                    }
-                    else {
-                        Rename-Item -Path $extractedDir -NewName $canonicalName -Force
-                    }
-                }
-                else {
-                    Write-Warning "Expected archive root directory '$archiveRoot' not found after extraction."
-                }
+            finally {
+                Remove-Item -LiteralPath $stagingDir -Recurse -Force
             }
         }
         else {
