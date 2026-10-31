@@ -122,6 +122,11 @@ function Resolve-PXPurlInput {
     $purl = ConvertFrom-PkgUri $PurlString
     $paths = Get-PackageFromPurl -Purl $purl
     $packagePath = if ($paths -is [array]) { $paths[0] } else { $paths }
+    if ($packagePath -and (Test-Path $packagePath -PathType Leaf) -and
+        ([System.IO.Path]::GetExtension($packagePath) -in @('.zip', '.nupkg'))) {
+        $packagePath = Install-Package -DownloadedPath $packagePath `
+            -Name $purl.Name -Version $purl.Version
+    }
 
     if (-not $packagePath -or -not (Test-Path $packagePath)) {
         throw "The purl did not resolve to an installed package (purl: $PurlString). For github, codeberg, and sourceforge purls the filename qualifier names the downloadable asset; use #subpath to select a file inside the package."
