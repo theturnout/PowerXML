@@ -986,6 +986,14 @@ Describe 'Test-Composition' {
         $script:ghZipHash = (Get-FileHash -Path $ghZipPath -Algorithm SHA256).Hash
         New-Item -ItemType Directory -Path (Join-Path $script:repo 'ghlib-3.0.0') | Out-Null
 
+        # Maven-style package: required jar + retained pom
+        $script:mavenPath = Join-Path $script:repo 'jarlib-4.0.0'
+        New-Item -ItemType Directory -Path $script:mavenPath | Out-Null
+        $script:jarPath = Join-Path $script:mavenPath 'jarlib-4.0.0.jar'
+        Set-Content -Path $script:jarPath -Value 'fake jar content' -NoNewline
+        $jarHash = (Get-FileHash -Path $script:jarPath -Algorithm SHA256).Hash
+        Set-Content -Path (Join-Path $script:mavenPath 'pom.xml') -Value '<project/>'
+
         $sbomXml = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <bom xmlns="http://cyclonedx.org/schema/bom/1.5">
@@ -1018,6 +1026,13 @@ Describe 'Test-Composition' {
                 </reference>
             </externalReferences>
         </component>
+        <component type="library" bom-ref="maven-comp">
+            <name>jarlib</name>
+            <purl>pkg:maven/org.example/jarlib@4.0.0</purl>
+            <hashes>
+                <hash alg="SHA-256">$jarHash</hash>
+            </hashes>
+        </component>
     </components>
     <compositions>
         <composition bom-ref="comp-a">
@@ -1032,6 +1047,12 @@ Describe 'Test-Composition' {
             <aggregate>complete</aggregate>
             <dependencies>
                 <dependency ref="gh-comp"/>
+            </dependencies>
+        </composition>
+        <composition bom-ref="comp-c">
+            <aggregate>complete</aggregate>
+            <dependencies>
+                <dependency ref="maven-comp"/>
             </dependencies>
         </composition>
     </compositions>
@@ -1093,6 +1114,33 @@ Describe 'Test-Composition' {
         $sf.Status | Should -Be 'Installed'
         $sf.HashVerified | Should -Be $false
         $sf.Detail | Should -BeLike '*no longer present*'
+    }
+
+    It 'Should report Missing when the required Maven JAR is absent (hashes: <HasHashes>)' -ForEach @(
+        @{ HasHashes = $true }
+        @{ HasHashes = $false }
+    ) {
+        if (-not $HasHashes) {
+            [xml]$sbom = Get-Content -Path $script:sbomFile
+            $component = $sbom.bom.components.component | Where-Object { $_.'bom-ref' -eq 'maven-comp' }
+            $null = $component.RemoveChild($component.hashes)
+            $sbom.Save($script:sbomFile)
+        }
+        Remove-Item $script:jarPath -Force
+
+        $result = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-c' -LocalRepository $script:repo
+        $result.Status | Should -Be 'Missing'
+        $result.HashVerified | Should -Be $false
+        $result.InstalledPath | Should -BeNullOrEmpty
+        $result.Detail | Should -BeLike '*required JAR not found*'
+        Test-Path (Join-Path $script:mavenPath 'pom.xml') | Should -Be $true
+    }
+
+    It 'Should report Installed with verified hash for a matching Maven JAR' {
+        $result = Test-Composition -SbomPath $script:sbomFile -TargetComposition 'comp-c' -LocalRepository $script:repo
+        $result.Status | Should -Be 'Installed'
+        $result.HashVerified | Should -Be $true
+        $result.InstalledPath | Should -Be $script:mavenPath
     }
 
     It 'Should use the first composition when TargetComposition is omitted' {

@@ -440,8 +440,9 @@ function Test-Composition {
       }
     }
 
-    if (-not (Test-Path $installedPath -PathType Container)) {
-      $detail = "Installed directory not found."
+    if (-not (Test-Path $installedPath -PathType Container) -or
+        ($purl.Type -eq "maven" -and -not (Test-Path $verifyPath -PathType Leaf))) {
+      $detail = if ($purl.Type -eq "maven") { "Installed directory or required JAR not found." } else { "Installed directory not found." }
       if ($verifyPath -and (Test-Path $verifyPath -PathType Leaf)) {
         $detail += " The downloaded artifact is still present."
       }
