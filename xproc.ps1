@@ -360,7 +360,6 @@ function Invoke-XmlCalabash {
     #        ForEach-Object {
     #            $cp = "$cp$cpDelimiter$_"
     #        }
-    $cp = "$cp$cpDelimiter$processorPath/lib/*$cpDelimiter$processorPath/extra/*"
     Write-Verbose "ClassPath: $cp"
     $xcArgs = @()
     # FIXME: should there be some attempt to look for $Env:JAVA_HOME here?

@@ -407,6 +407,27 @@ Describe 'XML Calabash configuration' {
         Remove-Variable CalabashTestPath, CalabashArgs -Scope Global
     }
 
+    It 'Preserves a caller-supplied classpath unchanged' {
+        $classPath = 'C:/tools/caller.jar;C:/tools/*'
+
+        Transform-PXXml -Processor xmlcalabash -ClassPath $classPath -Step p:identity
+
+        $global:CalabashArgs[0] | Should -Be '-cp'
+        $global:CalabashArgs[1] | Should -Be $classPath
+        Should -Invoke Get-PXClassPath -ModuleName powerxml -Times 0 -Exactly
+        Should -Invoke Copy-SoftwareComposition -ModuleName powerxml -Times 0 -Exactly
+    }
+
+    It 'Adds managed classpath directories only once' {
+        Transform-PXXml -Processor xmlcalabash -Step p:identity
+
+        $delimiter = if ($IsLinux -or $IsMacOS) { ':' } else { ';' }
+        $expected = "$global:CalabashTestPath/*$delimiter$delimiter$global:CalabashTestPath/lib/*$delimiter$global:CalabashTestPath/extra/*"
+        $global:CalabashArgs[0] | Should -Be '-cp'
+        $global:CalabashArgs[1] | Should -Be $expected
+        Should -Invoke Get-PXClassPath -ModuleName powerxml -Times 1 -Exactly
+    }
+
     It 'Uses an explicit configuration file unchanged (manual classpath: <Manual>)' -TestCases @(
         @{ Manual = $true }
         @{ Manual = $false }
