@@ -342,3 +342,140 @@ function Invoke-XsltprocXslt {
         return ($stdout -join "`n")
     }
 }
+
+<#
+.SYNOPSIS
+Transforms XML using PhoenixmlDb.Xslt (.NET, XSLT 3.0/4.0).
+.PARAMETER Stylesheet
+The path to the XSLT stylesheet file, or a string containing the stylesheet XML.
+.PARAMETER InputXml
+The path to the input XML file, or $null for initial-template invocation.
+.PARAMETER OutputFile
+Optional path to write the output. If not specified, returns output as string.
+.PARAMETER Parameters
+Optional hashtable of XSLT parameters.
+.PARAMETER AssemblyPaths
+Directories containing extracted NuGet packages (from package resolution).
+The function searches each for lib/{tfm}/*.dll and loads them.
+.NOTES
+Requires PhoenixmlDb.Xslt and its dependencies (PhoenixmlDb.Core, PhoenixmlDb.XQuery)
+to be available as extracted NuGet packages in AssemblyPaths.
+#>
+function Invoke-PhoenixmlXslt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Stylesheet,
+        [string]$InputXml,
+        [string]$OutputFile,
+        [hashtable]$Parameters,
+        [string[]]$AssemblyPaths
+    )
+
+    # Load assemblies from NuGet package directories
+    if ($AssemblyPaths) {
+        foreach ($pkgDir in $AssemblyPaths) {
+            if (-not (Test-Path $pkgDir -PathType Container)) { continue }
+            # Find the best matching lib/{tfm}/ directory
+            $libDir = Join-Path $pkgDir 'lib'
+            if (-not (Test-Path $libDir -PathType Container)) { continue }
+            $tfmDirs = Get-ChildItem -Path $libDir -Directory | Sort-Object Name -Descending
+            if ($tfmDirs.Count -eq 0) { continue }
+            $selectedTfm = $tfmDirs[0].FullName
+            $dlls = Get-ChildItem -Path $selectedTfm -Filter '*.dll'
+            foreach ($dll in $dlls) {
+                try {
+                    Add-Type -Path $dll.FullName -ErrorAction SilentlyContinue
+                }
+                catch {
+                    Write-Verbose "Skipped loading $($dll.Name): $($_.Exception.Message)"
+                }
+            }
+        }
+    }
+
+    # Verify the type is available
+    try {
+        $null = [PhoenixmlDb.Xslt.XsltTransformer]
+    }
+    catch {
+        throw "PhoenixmlDb.Xslt assembly is not loaded. Ensure the NuGet packages are resolved via PackageResolution."
+    }
+
+    $transformer = New-Object PhoenixmlDb.Xslt.XsltTransformer
+
+    # Load stylesheet
+    $stylesheetContent = $Stylesheet
+    $baseUri = [uri]::new("urn:from-string")
+    if (Test-Path $Stylesheet -PathType Leaf) {
+        $stylesheetContent = [System.IO.File]::ReadAllText(
+            [System.IO.Path]::GetFullPath($Stylesheet))
+        $baseUri = [uri]::new([System.IO.Path]::GetFullPath($Stylesheet))
+    }
+
+    try {
+        $null = $transformer.LoadStylesheetAsync($stylesheetContent, $baseUri).GetAwaiter().GetResult()
+    }
+    catch {
+        throw "Failed to load XSLT stylesheet: $_"
+    }
+
+    # Set parameters
+    if ($Parameters) {
+        foreach ($key in $Parameters.Keys) {
+            $transformer.SetParameter($key, [string]$Parameters[$key])
+        }
+    }
+
+    # Determine input content
+    $inputContent = $null
+    if ($InputXml) {
+        if (Test-Path $InputXml -PathType Leaf) {
+            $resolvedInput = [System.IO.Path]::GetFullPath($InputXml)
+            $inputContent = [System.IO.File]::ReadAllText($resolvedInput)
+            $transformer.SetSourceDocumentUri([uri]::new($resolvedInput))
+        }
+        else {
+            $inputContent = $InputXml
+        }
+    }
+    else {
+        # Initial-template mode
+        $transformer.SetInitialTemplate(
+            "initial-template",
+            "http://www.w3.org/1999/XSL/Transform")
+    }
+
+    # Transform
+    try {
+        $result = $transformer.TransformAsync($inputContent).GetAwaiter().GetResult()
+    }
+    catch {
+        throw "XSLT transformation failed: $_"
+    }
+
+    # Handle secondary result documents
+    $secondaryDocs = $transformer.SecondaryResultDocuments
+    if ($secondaryDocs -and $secondaryDocs.Count -gt 0 -and $OutputFile) {
+        $outDir = [System.IO.Path]::GetDirectoryName(
+            [System.IO.Path]::GetFullPath($OutputFile))
+        foreach ($kvp in $secondaryDocs.GetEnumerator()) {
+            $secondaryPath = Join-Path $outDir $kvp.Key
+            $secondaryDir = [System.IO.Path]::GetDirectoryName($secondaryPath)
+            if (-not (Test-Path $secondaryDir)) {
+                New-Item -ItemType Directory -Path $secondaryDir -Force | Out-Null
+            }
+            [System.IO.File]::WriteAllText($secondaryPath, $kvp.Value,
+                [System.Text.Encoding]::UTF8)
+        }
+    }
+
+    if ($OutputFile) {
+        [System.IO.File]::WriteAllText($OutputFile, $result,
+            [System.Text.Encoding]::UTF8)
+        return $null
+    }
+    else {
+        return $result
+    }
+}

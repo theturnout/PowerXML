@@ -3,8 +3,10 @@
     Installs a downloaded package artifact into the local repository.
 .DESCRIPTION
     Handles post-download concerns: hash verification, zip extraction,
-    rootZip directory renaming, and cleanup. Idempotent — skips if the
-    target directory already exists.
+    wrapper directory renaming, and cleanup. The archive's wrapper directory
+    is auto-detected from its structure; archives without one are extracted
+    directly into the canonical "$Name-$Version" directory. Idempotent — skips
+    if the target directory already exists.
 .PARAMETER DownloadedPath
     Path to the downloaded artifact file (e.g. a .zip or .jar).
 .PARAMETER Name
@@ -12,8 +14,10 @@
 .PARAMETER Version
     Package version used for the installed directory.
 .PARAMETER ZipRoot
-    The directory name inside the zip archive, if it differs from "$Name-$Version".
-    When set, the extracted directory is renamed to "$Name-$Version".
+    Legacy metadata for the directory name inside the zip archive when it differs
+    from "$Name-$Version". The wrapper directory is auto-detected from the archive
+    structure; when ZipRoot disagrees with the detected root (or the archive has
+    no wrapper), a warning is emitted and the detected structure wins.
 .PARAMETER Hashes
     Array of hash objects (each with Algorithm and Hash properties) to verify against
     the downloaded file. Each entry is checked via Test-FileHash.
@@ -22,6 +26,58 @@
 .OUTPUTS
     The full path to the installed package directory.
 #>
+# WinPS 5.1 compatibility: the zip API is auto-loaded in .NET Core but not .NET Framework
+Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+
+<#
+.SYNOPSIS
+    Detects the wrapper directory of a zip-format archive.
+.DESCRIPTION
+    Returns the single top-level directory name when every archive entry lives
+    underneath it, and $null when the archive has no wrapper (entries at the
+    archive root). Unreadable archives also return $null.
+.PARAMETER Path
+    Path to the archive file.
+.OUTPUTS
+    The wrapper directory name, or $null when there is none.
+#>
+function Get-ArchiveRoot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+    try {
+        # Resolve PSDrive paths (e.g. TestDrive:\) to real filesystem paths
+        # so the .NET zip API can open them
+        $resolvedPath = Convert-Path -Path $Path -ErrorAction Stop
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($resolvedPath)
+    }
+    catch {
+        return $null
+    }
+    try {
+        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName } | Where-Object { $_ })
+        if ($entryNames.Count -eq 0) {
+            return $null
+        }
+        $roots = @($entryNames | ForEach-Object { ($_ -split "/")[0] } | Sort-Object -Unique)
+        if ($roots.Count -ne 1) {
+            return $null
+        }
+        $root = $roots[0]
+        # A single top-level entry name is only a wrapper directory when
+        # entries actually live underneath it
+        $nested = @($entryNames | Where-Object { $_.Length -gt $root.Length -and $_.StartsWith("$root/") })
+        if ($nested.Count -eq 0) {
+            return $null
+        }
+        return $root
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
 function Install-Package {
     [CmdletBinding()]
     param(
@@ -53,24 +109,54 @@ function Install-Package {
         $null = Test-FileHash -Path $DownloadedPath -ExpectedHash $h.Hash -Algorithm $h.Algorithm
     }
 
-    # Extract if zip
+    # Extract if zip (nupkg files are also ZIP archives)
     $extension = [System.IO.Path]::GetExtension($DownloadedPath)
-    if ($extension -eq ".zip") {
-        Expand-Archive -Path $DownloadedPath -DestinationPath $LocalRepository -Force
+    if ($extension -in @(".zip", ".nupkg")) {
+        $canonicalName = "$Name-$Version"
+        # Determine the archive's wrapper directory: auto-detected from the
+        # archive structure, with the -ZipRoot parameter kept for compatibility.
+        $archiveRoot = Get-ArchiveRoot -Path $DownloadedPath
+        if ($ZipRoot -and $archiveRoot -and ($ZipRoot -cne $archiveRoot)) {
+            Write-Warning "ZipRoot '$ZipRoot' does not match the archive's actual root directory '$archiveRoot'; using the detected root."
+        }
+        if (-not $archiveRoot -and $ZipRoot) {
+            Write-Warning "ZipRoot '$ZipRoot' was specified, but the archive has no wrapper directory; extracting directly into '$canonicalName'."
+        }
 
-        # Handle rootZip rename: the directory inside the zip may not match the canonical name
-        if ($ZipRoot -and $ZipRoot -cne "$Name-$Version") {
-            $extractedDir = Join-Path $LocalRepository $ZipRoot
-            if (Test-Path $extractedDir -PathType Container) {
-                Write-Host "Renaming extracted directory '$ZipRoot' to '$Name-$Version'"
-                Rename-Item -Path $extractedDir -NewName "$Name-$Version" -Force
+        $archivePath = $DownloadedPath
+        $temporaryZip = $null
+        try {
+            # Windows PowerShell 5.1 Expand-Archive accepts only the .zip extension.
+            if ($extension -eq ".nupkg") {
+                $temporaryZip = Join-Path ([System.IO.Path]::GetTempPath()) "$(New-Guid).zip"
+                Copy-Item -LiteralPath $DownloadedPath -Destination $temporaryZip -ErrorAction Stop
+                $archivePath = $temporaryZip
+            }
+
+            if ($archiveRoot) {
+                $stagingDir = Join-Path $LocalRepository "install-$(New-Guid)"
+                $null = New-Item -ItemType Directory -Path $stagingDir -ErrorAction Stop
+                try {
+                    Expand-Archive -Path $archivePath -DestinationPath $stagingDir -Force -ErrorAction Stop
+                    $extractedDir = Join-Path $stagingDir $archiveRoot
+                    Move-Item -LiteralPath $extractedDir -Destination $targetDir -ErrorAction Stop
+                }
+                finally {
+                    Remove-Item -LiteralPath $stagingDir -Recurse -Force
+                }
             }
             else {
-                Write-Warning "Expected zip root directory '$ZipRoot' not found after extraction."
+                # No wrapper directory in the archive: extract its contents directly
+                # into the canonical directory instead of spraying them into the
+                # repository root
+                Expand-Archive -Path $archivePath -DestinationPath $targetDir -Force
+                Write-Host "Archive has no wrapper directory; extracted contents into '$canonicalName'."
             }
         }
-        else {
-            Write-Host "No rootZip specified or matches canonical name; no renaming needed."
+        finally {
+            if ($temporaryZip -and (Test-Path -LiteralPath $temporaryZip)) {
+                Remove-Item -LiteralPath $temporaryZip -Force
+            }
         }
 
     }

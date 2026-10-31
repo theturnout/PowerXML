@@ -12,11 +12,14 @@
     want to test package retrieve logic or ensure you have the latest dependencies.
 .PARAMETER NoCoverage
     If set, will disable code coverage collection.
+.PARAMETER TestName
+    Filter which tests to run by full name (supports wildcard patterns). For example, '*MIME*' runs only tests with MIME in the name.
 #>
 param(
     [string]$TestPath = "./",
     [string]$ModulePath = "./",
     [string]$OutputPath = "./test_out",
+    [string[]]$TestName,
     [switch]$NoCache,
     [switch]$NoCoverage,
     [switch]$RealNetwork
@@ -39,13 +42,17 @@ $VerbosePreference = 'SilentlyContinue'
 
 
 # Configure Pester run
-$config = New-PesterConfiguration -Hashtable @{
+$pesterConfig = @{
     Run          = @{ Path = $TestPath; PassThru = $true }
     CodeCoverage = @{ Enabled = -not $NoCoverage; Path = $ModulePath; UseBreakpoints = $false; OutputPath = "$OutputPath/coverage.xml" }
     Output       = @{ Verbosity = 'Detailed' }
     TestResult   = @{ Enabled = $true; OutputPath = "$OutputPath/test-results.xml" }
     Should       = @{ ErrorAction = 'Continue' }
 }
+if ($TestName) {
+    $pesterConfig.Filter = @{ FullName = $TestName }
+}
+$config = New-PesterConfiguration -Hashtable $pesterConfig
 
 # Use Pester's native timing feature if available, otherwise use a stopwatch
 $pesterSupportsTiming = ($config.PSObject.Properties.Name -contains 'Timing')

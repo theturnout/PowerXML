@@ -10,6 +10,7 @@ Polyglot enables downloading and managing software dependencies from multiple pa
 
 - **PURL Support**: Parse and resolve Package URLs for multiple ecosystems:
   - Maven Central & custom Maven repositories
+  - NuGet
   - GitHub Releases
   - Codeberg Releases
   - SourceForge
@@ -22,7 +23,7 @@ Polyglot enables downloading and managing software dependencies from multiple pa
 Import the module directly:
 
 ```powershell
-Import-Module ./polyglot
+Import-Module ./polyglot.psm1 -Force
 ```
 
 ## Configuration
@@ -40,22 +41,30 @@ $env:polyglotpm = "C:\path\to\your\repo"
 ```powershell
 # Maven artifact
 $purl = ConvertFrom-PkgUri "pkg:maven/org.xmlresolver/xmlresolver@6.0.12"
-Get-PackageFromPurl -purl $purl
+Get-PackageFromPurl -Purl $purl
 
 # GitHub release
 $purl = ConvertFrom-PkgUri "pkg:github/nineml/coffeefilter@3.3.4"
-Get-PackageFromPurl -purl $purl
+Get-PackageFromPurl -Purl $purl
 
 # Codeberg release with specific asset
 $purl = ConvertFrom-PkgUri "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip"
-Get-PackageFromPurl -purl $purl
+Get-PackageFromPurl -Purl $purl
 ```
 
 ### Download from SBOM Composition
 
 ```powershell
-Copy-SoftwareComposition -sbomPath "sbom.xml" -targetComposition "oscal"
+Copy-SoftwareComposition -SbomPath "sbom.xml" -TargetComposition "oscal"
 ```
+
+### Validate an Installed Composition
+
+```powershell
+Test-Composition -SbomPath "sbom.xml" -TargetComposition "oscal"
+```
+
+Reports per-dependency status (`Installed`, `Missing`, `HashMismatch`, `NoHashes`, or `UnknownComponent`) without downloading anything.
 
 ### Download GitHub Release Directly
 
@@ -65,6 +74,7 @@ Copy-GitHubRelease -RepoOwner "nineml" -RepoName "coffeefilter" `
     -Assets @("coffeefilter-3.3.4.zip") `
     -libPath "./lib"
 ```
+Note: `lib` is an illustrative output path in this example; create it first or replace it with your preferred target directory.
 
 ### List GitHub Releases
 
@@ -126,6 +136,7 @@ Save-SBOM -Sbom $sbom -Path "output-sbom.xml"
 | `ConvertFrom-PkgUri` | Parse a PURL string into a structured object |
 | `Get-PackageFromPurl` | Download a package and its dependencies from a PURL |
 | `Copy-SoftwareComposition` | Download all dependencies from an SBOM composition |
+| `Test-Composition` | Validate that a composition's dependencies are installed and match their SBOM hashes |
 | `Copy-GitHubRelease` | Download release assets from GitHub |
 | `Get-GitHubReleases` | List available releases for a GitHub repository |
 | `Get-MavenArtifact` | Download a Maven artifact (JAR + POM) |

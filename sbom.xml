@@ -1,15 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bom xmlns="http://cyclonedx.org/schema/bom/1.5" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://cyclonedx.org/schema/bom/1.5 https://cyclonedx.org/schema/bom-1.5.xsd">
+<bom xmlns="http://cyclonedx.org/schema/bom/1.5"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://cyclonedx.org/schema/bom/1.5 https://cyclonedx.org/schema/bom-1.5.xsd">
 	<components>
+		<component type="library" bom-ref="xmlcalabash-3.0.54">
+			<name>xmlcalabash</name>
+			<!-- not sure best way to do this, codeberg isn't officially defined in
+			https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
+			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.54</purl>
+			<externalReferences>
+				<reference type="distribution">
+					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.54?filename=xmlcalabash-3.0.54.zip</url>
+					<hashes>
+						<hash alg="SHA-256">02158b72ba120984fcff0b0443f28db09113ce8ed6cb90ae925476d80a376f85</hash>
+					</hashes>
+				</reference>
+			</externalReferences>
+			<components>
+				<!-- components could just be artifacts, which seems to go against what an SBOM is -->
+				<component type="application">
+					<name>binary-dist</name>
+				</component>
+			</components>
+		</component>
 		<component type="library" bom-ref="xmlcalabash-3.0.40">
 			<name>xmlcalabash</name>
-			<!-- not sure best way to do this, codeberg isn't officially defined in https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
+			<!-- not sure best way to do this, codeberg isn't officially defined in
+			https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
 			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40</purl>
 			<externalReferences>
 				<reference type="distribution">
 					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.40?filename=xmlcalabash-3.0.40.zip</url>
 					<hashes>
-<hash alg="SHA-256">d7eda14c9ef5e1058b940ba7bdb062aa8bc1aaba165cef0e74d56240abe42c7c</hash>
+						<hash alg="SHA-256">d7eda14c9ef5e1058b940ba7bdb062aa8bc1aaba165cef0e74d56240abe42c7c</hash>
 					</hashes>
 				</reference>
 			</externalReferences>
@@ -22,13 +45,34 @@
 		</component>
 		<component type="library" bom-ref="xmlcalabash-3.0.24">
 			<name>xmlcalabash</name>
-			<!-- not sure best way to do this, codeberg isn't officially defined in https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
+			<!-- not sure best way to do this, codeberg isn't officially defined in
+			https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
 			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24</purl>
 			<externalReferences>
 				<reference type="distribution">
 					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=xmlcalabash-3.0.24.zip</url>
 					<hashes>
-<hash alg="SHA-256">384204469a0806fdefd021bd65242cca73a5395f664a4ac80bfb2c9c1c316c88</hash>
+						<hash alg="SHA-256">384204469a0806fdefd021bd65242cca73a5395f664a4ac80bfb2c9c1c316c88</hash>
+					</hashes>
+				</reference>
+			</externalReferences>
+			<components>
+				<!-- components could just be artifacts, which seems to go against what an SBOM is -->
+				<component type="application">
+					<name>binary-dist</name>
+				</component>
+			</components>
+		</component>
+		<component type="library" bom-ref="xmlcalabash-polyglot-3.0.54">
+			<name>xmlcalabash-polyglot</name>
+			<!-- not sure best way to do this, codeberg isn't officially defined in
+			https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
+			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.54</purl>
+			<externalReferences>
+				<reference type="distribution">
+					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.54?filename=polyglot-3.0.54.zip</url>
+					<hashes>
+						<hash alg="SHA-256">ef8546250d4378f90252263143a1d069459bdf55958a384a182d0aecfc5b5f15</hash>
 					</hashes>
 				</reference>
 			</externalReferences>
@@ -41,13 +85,14 @@
 		</component>
 		<component type="library" bom-ref="xmlcalabash-polyglot-3.0.24">
 			<name>xmlcalabash-polyglot</name>
-			<!-- not sure best way to do this, codeberg isn't officially defined in https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
+			<!-- not sure best way to do this, codeberg isn't officially defined in
+			https://github.com/package-url/purl-spec/blob/main/PURL-TYPES.rst -->
 			<purl>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24</purl>
 			<externalReferences>
 				<reference type="distribution">
 					<url>pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filename=polyglot-3.0.24.zip</url>
 					<hashes>
-<hash alg="SHA-256">abc03fe9c76c0d7364f53eb4b55ee4db8c559826eacfa23d69b1de3d3ab07a79</hash>
+						<hash alg="SHA-256">abc03fe9c76c0d7364f53eb4b55ee4db8c559826eacfa23d69b1de3d3ab07a79</hash>
 					</hashes>
 				</reference>
 			</externalReferences>
@@ -57,6 +102,18 @@
 					<name>binary-dist</name>
 				</component>
 			</components>
+		</component>
+		<component type="library" bom-ref="coffeefilter-3.4.1">
+			<name>coffeefilter</name>
+			<purl>pkg:maven/org.nineml/coffeefilter@3.4.1</purl>
+		</component>
+		<component type="library" bom-ref="coffeegrinder-3.4.1">
+			<name>coffeegrinder</name>
+			<purl>pkg:maven/org.nineml/coffeegrinder@3.4.1</purl>
+		</component>
+		<component type="library" bom-ref="coffeesacks-3.4.1">
+			<name>coffeesacks</name>
+			<purl>pkg:maven/org.nineml/coffeesacks@3.4.1</purl>
 		</component>
 		<component type="library" bom-ref="coffeefilter">
 			<name>coffeefilter</name>
@@ -69,6 +126,10 @@
 		<component type="library" bom-ref="coffeesacks">
 			<name>coffeesacks</name>
 			<purl>pkg:maven/org.nineml/coffeesacks@3.2.9</purl>
+		</component>
+		<component type="library" bom-ref="markup-blitz-1.13">
+			<name>markup-blitz</name>
+			<purl>pkg:maven/de.bottlecaps/markup-blitz@1.13</purl>
 		</component>
 		<component type="library" bom-ref="markup-blitz">
 			<name>markup-blitz</name>
@@ -99,8 +160,24 @@
 			</externalReferences>						
 		</component>
 -->
-<component type="library" bom-ref="morganaxproc-1.8.2">
-	<name>morganaxproc</name>
+		<component type="library" bom-ref="morganaxproc-1.8.18">
+			<name>morganaxproc</name>
+			<externalReferences>
+				<reference type="distribution">
+					<url>pkg:sourceforge/morganaxproc-IIIse@1.8.18?filename=MorganaXProc-IIIse-1.8.18/MorganaXProc-IIIse-1.8.18.zip</url>
+				</reference>
+			</externalReferences>
+			<hashes>
+				<hash alg="SHA-256">ffe67cb4d8c4130c497d3425a4d5a7d05d320e4c530d1f4289c931e4413d07d1</hash>
+				<hash alg="SHA-1">298e5d24816c05d0cae5babe56e21538368c2993</hash>
+			</hashes>
+			<purl>pkg:sourceforge/morganaxproc-IIIse@1.8.18</purl>
+			<properties>
+				<property name="rootZip">MorganaXProc-IIIse-1.8.18</property>
+			</properties>
+		</component>
+		<component type="library" bom-ref="morganaxproc-1.8.2">
+			<name>morganaxproc</name>
 			<externalReferences>
 				<reference type="distribution">
 					<url>pkg:sourceforge/morganaxproc-IIIse@1.8.2?filename=MorganaXProc-IIIse-1.8.2/MorganaXProc-IIIse-1.8.2.zip</url>
@@ -115,15 +192,15 @@
 				<property name="rootZip">MorganaXProc-IIIse-1.8.2</property>
 			</properties>
 		</component>
-<component type="library" bom-ref="morganaxproc-1.8">
-	<name>morganaxproc</name>
+		<component type="library" bom-ref="morganaxproc-1.8">
+			<name>morganaxproc</name>
 			<externalReferences>
 				<reference type="distribution">
 					<url>pkg:sourceforge/morganaxproc-IIIse@1.8?filename=MorganaXProc-IIIse-1.8/MorganaXProc-IIIse-1.8.zip</url>
 				</reference>
 			</externalReferences>
 			<hashes>
-<hash alg="SHA-256">2db75008e9ff378289cebb77ceea78a846502286ec167f73e2d346193d53b7fe</hash>
+				<hash alg="SHA-256">2db75008e9ff378289cebb77ceea78a846502286ec167f73e2d346193d53b7fe</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.8</purl>
 			<properties>
@@ -134,7 +211,7 @@
 			<name>morganaxproc</name>
 			<externalReferences>
 				<reference type="distribution">
-					<url>pkg:sourceforge/morganaxproc-IIIse@1.6?filename=MorganaXProc-IIIse-1.6.7/MorganaXProc-IIIse-1.6.7.zip</url>					
+					<url>pkg:sourceforge/morganaxproc-IIIse@1.6?filename=MorganaXProc-IIIse-1.6.7/MorganaXProc-IIIse-1.6.7.zip</url>
 				</reference>
 			</externalReferences>
 			<hashes>
@@ -153,7 +230,7 @@
 				</reference>
 			</externalReferences>
 			<hashes>
-<hash alg="SHA-256">4e3ae095b9a566991342575da6c5afc6181b74da61707fcd57a508f24f28037a</hash>
+				<hash alg="SHA-256">4e3ae095b9a566991342575da6c5afc6181b74da61707fcd57a508f24f28037a</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.5</purl>
 		</component>
@@ -165,7 +242,7 @@
 				</reference>
 			</externalReferences>
 			<hashes>
-<hash alg="SHA-256">4e3ae095b9a566991342575da6c5afc6181b74da61707fcd57a508f24f28037a</hash>
+				<hash alg="SHA-256">4e3ae095b9a566991342575da6c5afc6181b74da61707fcd57a508f24f28037a</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.5</purl>
 		</component>
@@ -201,14 +278,14 @@
 		<component type="library" bom-ref="schXslt">
 			<name>schXslt</name>
 			<hashes>
-<hash alg="SHA-256">4f4f21edab7b37f96ad59ae12a344d3510f1092ac46b6d81a4efa0120b73cb58</hash>
+				<hash alg="SHA-256">4f4f21edab7b37f96ad59ae12a344d3510f1092ac46b6d81a4efa0120b73cb58</hash>
 			</hashes>
 			<purl>pkg:maven/name.dmaus.schxslt/schxslt@1.10.1</purl>
 		</component>
 		<component type="library" bom-ref="saxon-he-11">
 			<name>Saxon-HE</name>
 			<hashes>
-<hash alg="SHA-256">77caec6ca2753321d40f5e203abdda2172b15c5d40643cafedc87e1b979da82d</hash>
+				<hash alg="SHA-256">77caec6ca2753321d40f5e203abdda2172b15c5d40643cafedc87e1b979da82d</hash>
 			</hashes>
 			<purl>pkg:maven/net.sf.saxon/Saxon-HE@11.5</purl>
 		</component>
@@ -228,53 +305,67 @@
 	<compositions>
 		<composition bom-ref="pester-tests">
 			<aggregate>complete</aggregate>
-			<dependencies>				
-				<dependency ref="xmlcalabash-3.0.24"/>
-				<dependency ref="morganaxproc-1.8.2"/>
+			<dependencies>
+				<dependency ref="xmlcalabash-3.0.40" />
+				<dependency ref="morganaxproc-1.8.2" />
 			</dependencies>
 		</composition>
 		<composition bom-ref="saxon-he">
 			<aggregate>complete</aggregate>
 			<dependencies>
-				<dependency ref="coffeesacks"/>				
-				<dependency ref="saxon-he-11"/>
+				<dependency ref="coffeesacks" />
+				<dependency ref="saxon-he-11" />
 			</dependencies>
 		</composition>
 		<composition bom-ref="oscal">
 			<aggregate>complete</aggregate>
 			<dependencies>
-				<dependency ref="markup-blitz"/>
-				<dependency ref="xmlcalabash-3.0.24"/>
-				<dependency ref="morganaxproc-1.8.2"/>
-				<dependency ref="xmlcalabash-polyglot-3.0.24"/>
-				<dependency ref="coffeefilter"/>
-				<dependency ref="coffeegrinder"/>
-				<dependency ref="xmlresolver-mvn"/>
-				<dependency ref="xerces"/>
-				<dependency ref="schXslt"/>
+				<dependency ref="markup-blitz-1.13" />
+				<dependency ref="xmlcalabash-3.0.54" />
+				<dependency ref="morganaxproc-1.8.18" />
+				<dependency ref="xmlcalabash-polyglot-3.0.54" />
+				<dependency ref="coffeefilter-3.4.1" />
+				<dependency ref="coffeegrinder-3.4.1" />
+				<dependency ref="xmlresolver-mvn" />
+				<dependency ref="xerces" />
+				<dependency ref="schXslt" />
+			</dependencies>
+		</composition>
+		<composition bom-ref="oscal-old">
+			<aggregate>complete</aggregate>
+			<dependencies>
+				<dependency ref="markup-blitz" />
+				<dependency ref="xmlcalabash-3.0.24" />
+				<dependency ref="morganaxproc-1.8.2" />
+				<dependency ref="xmlcalabash-polyglot-3.0.24" />
+				<dependency ref="coffeefilter" />
+				<dependency ref="coffeegrinder" />
+				<dependency ref="xmlresolver-mvn" />
+				<dependency ref="xerces" />
+				<dependency ref="schXslt" />
 			</dependencies>
 		</composition>
 		<composition bom-ref="classic-cdf-test-method">
 			<aggregate>complete</aggregate>
 			<dependencies>
-				<dependency ref="morganaxproc-1.2"/>
-				<dependency ref="xmlresolver-mvn"/>
-				<dependency ref="xerces"/>
-				<dependency ref="schXslt"/>
-				<dependency ref="saxon-he-11"/>
-				<dependency ref="xmlcalabash-3.0.24"/>
+				<dependency ref="morganaxproc-1.2" />
+				<dependency ref="xmlresolver-mvn" />
+				<dependency ref="xerces" />
+				<dependency ref="schXslt" />
+				<dependency ref="saxon-he-11" />
+				<dependency ref="xmlcalabash-3.0.24" />
 			</dependencies>
 		</composition>
 		<composition bom-ref="modern-cdf-test-method">
 			<aggregate>complete</aggregate>
 			<dependencies>
-				<dependency ref="morganaxproc-1.5"/>
-				<dependency ref="xmlresolver-mvn"/>
-				<dependency ref="xerces"/>
-				<dependency ref="schXslt"/>
-				<dependency ref="saxon-he-11"/>
-				<dependency ref="saxon-ee-12"/>
-				<dependency ref="xmlcalabash-3.0.24"/>
+				<dependency ref="morganaxproc-1.5" />
+				<dependency ref="xmlresolver-mvn" />
+				<dependency ref="xerces" />
+				<dependency ref="schXslt" />
+				<dependency ref="saxon-he-11" />
+				<dependency ref="saxon-ee-12" />
+				<dependency ref="xmlcalabash-3.0.24" />
 			</dependencies>
 		</composition>
 	</compositions>

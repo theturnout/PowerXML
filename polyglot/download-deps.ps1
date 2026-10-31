@@ -5,6 +5,7 @@
 
 
 $hashAlgorithm = "SHA256"
+$Script:LatestVersionCache = @{}
 
 <#
 .SYNOPSIS
@@ -216,5 +217,91 @@ function Copy-GitHubRelease {
         Write-Host "An error occurred while downloading the release. Please check the inputs."
         Write-Host "Error details: $($_.Exception.Message)"
     }
+}
+
+<#
+.SYNOPSIS
+    Resolves the latest release version for a package from its hosting platform API.
+.PARAMETER Type
+    The package type (e.g., "github", "codeberg").
+.PARAMETER Namespace
+    The repository owner/namespace.
+.PARAMETER Name
+    The repository/package name.
+.PARAMETER ApiPath
+    The base API URL. Defaults to "https://api.github.com".
+.OUTPUTS
+    The tag_name string of the latest release, or $null if the type is unsupported
+    or the API call fails.
+#>
+function Resolve-LatestVersion {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Type,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Namespace,
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [string]$ApiPath = "https://api.github.com"
+    )
+
+    if ($Type -notin @("github", "codeberg", "nuget")) {
+        Write-Warning "GetLatest is not supported for package type '$Type'. Using pinned version."
+        return $null
+    }
+
+    $cacheKey = "$Type/$Namespace/$Name"
+    $ttlHours = if ($env:POWERXML_CACHE_TTL_HOURS) { [double]$env:POWERXML_CACHE_TTL_HOURS } else { 3 }
+
+    if ($Script:LatestVersionCache.ContainsKey($cacheKey)) {
+        $entry = $Script:LatestVersionCache[$cacheKey]
+        $age = (Get-Date) - $entry.Timestamp
+        if ($age.TotalHours -lt $ttlHours) {
+            Write-Verbose "Cache hit for '$cacheKey' (age $([math]::Round($age.TotalMinutes, 1)) min)"
+            return $entry.Version
+        }
+        Write-Verbose "Cache expired for '$cacheKey'"
+    }
+
+    if ($Type -eq "nuget") {
+        $idLower = $Name.ToLowerInvariant()
+        $url = "https://api.nuget.org/v3-flatcontainer/$idLower/index.json"
+    }
+    else {
+        $url = "$ApiPath/repos/$Namespace/$Name/releases/latest"
+    }
+    try {
+        $response = Invoke-RestMethod -Uri $url -UseBasicParsing
+        if ($Type -eq "nuget") {
+            $version = $response.versions | Select-Object -Last 1
+        }
+        else {
+            $version = $response.tag_name
+        }
+        $Script:LatestVersionCache[$cacheKey] = @{
+            Version   = $version
+            Timestamp = Get-Date
+        }
+        return $version
+    }
+    catch {
+        Write-Warning "Failed to resolve latest version for $Namespace/${Name}: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+<#
+.SYNOPSIS
+    Clears the in-memory cache used by Resolve-LatestVersion.
+.DESCRIPTION
+    Resets the script-scoped latest-version cache. Useful in tests or when
+    forcing a fresh resolution.
+#>
+function Clear-LatestVersionCache {
+    [CmdletBinding()]
+    param()
+    $Script:LatestVersionCache = @{}
 }
 
