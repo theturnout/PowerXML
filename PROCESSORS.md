@@ -31,6 +31,41 @@ Candidates from the processor survey (detailed in the sections below):
 | MSXML 4.0 | XSLT | none | Legacy; MSXML 6.0 already supported |
 | DotNetXML | XSLT | none | Already supported via `dotnet` |
 
+## iXML Engine Selection
+
+The `p:invisible-xml` step needs a grammar-processing engine. How that engine is chosen differs by XProc processor.
+
+### XML Calabash
+
+PowerXML performs no selection: Calabash implements `p:invisible-xml` internally with the NineML (coffeefilter) stack bundled in its own `lib/` directory. The configuration PowerXML generates for Calabash declares only a mimetype mapping (`extensions="ixml pdf inp"` → `text/plain`) so that grammar files load as plain text; the engine itself is whatever Calabash ships.
+
+### MorganaXProc
+
+MorganaXProc loads iXML engines through connector classes declared in its configuration. The auto-generated config from `Get-PXAutoConfig` (`xproc.ps1`) registers both known connectors, in this order:
+
+1. `com.xml_project.morganaxproc3.ninemlConnector.NineMLConnector` — requires the `org.nineml` coffeefilter/coffeegrinder jars
+2. `com.xml_project.morganaxproc3.markupblitzConnector.MarkupBlitzConnector` — requires the `de.bottlecaps` markup-blitz jar
+
+There is no version detection here, unlike the Saxon XSLT/XQuery connectors (where the Saxon jar on the classpath is parsed and mapped to `Saxon12-3`/`Saxon12`/`Saxon11`/`Saxon10`). Instead, two properties make unconditional registration of both connectors safe and effective:
+
+- **Lazy initialization.** Morgana initializes connectors on first use, so an entry whose classes are not on the classpath is inert rather than fatal. Registering both is safe on any composition.
+- **The composition is the selector.** Whichever connector's dependencies the SBOM composition actually supplies is the one that runs. The `oscal` composition, for example, ships coffeefilter/coffeegrinder (NineML) *and* markup-blitz, so either engine can serve; a composition carrying only markup-blitz gets MarkupBlitz. When both are present, the listed order gives NineML precedence.
+
+The two engines are not strictly interchangeable — they track different NineML component versions — which is why the auto-config registers both rather than picking one. Both have been verified to produce identical, correct output on the `test_data/ixml.xpl` date-grammar pipeline under the `oscal` composition.
+
+### Forcing a specific engine
+
+Explicit `-Configuration` entries always win over the auto-detected defaults:
+
+```powershell
+Transform-PXXml `
+    -Processor "morganaxproc" `
+    -Pipeline "./date.xpl" `
+    -Configuration @{ "ixml-connector" = "com.xml_project.morganaxproc3.markupblitzConnector.MarkupBlitzConnector" }
+```
+
+Note that with `-ClassPath` (manual mode) no configuration is generated at all — supply `-Configuration` yourself if you need iXML connectors in that mode.
+
 ## Recommended
 
 ### Saxon-HE (Java)
