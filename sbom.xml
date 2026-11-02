@@ -261,9 +261,9 @@
 			</hashes>
 			<purl>pkg:maven/net.sf.saxon/Saxon-HE@11.5</purl>
 		</component>
-		<component type="library" bom-ref="phoenixml-core-2.6.0">
+		<component type="library" bom-ref="phoenixml-core-2.5.0">
 			<name>PhoenixmlDb.Core</name>
-			<purl>pkg:nuget/PhoenixmlDb.Core@2.6.0</purl>
+			<purl>pkg:nuget/PhoenixmlDb.Core@2.5.0</purl>
 		</component>
 		<component type="library" bom-ref="phoenixml-xquery-2.9.0">
 			<name>PhoenixmlDb.XQuery</name>
@@ -273,35 +273,10 @@
 			<name>PhoenixmlDb.Xslt</name>
 			<purl>pkg:nuget/PhoenixmlDb.Xslt@2.9.0</purl>
 		</component>
-		<!-- Transitive dependencies of the PhoenixmlDb packages: the PolyglotPM
-		     NuGet handler does not walk nupkg dependency groups, so the complete
-		     closure is listed explicitly. Framework facades (Microsoft.CSharp,
-		     System.Runtime.CompilerServices.Unsafe) are provided by the .NET
-		     runtime and are not listed. -->
-		<component type="library" bom-ref="antlr4-runtime-standard-4.13.1">
-			<name>Antlr4.Runtime.Standard</name>
-			<purl>pkg:nuget/Antlr4.Runtime.Standard@4.13.1</purl>
-		</component>
-		<component type="library" bom-ref="lucene-net-4.8.0-beta00016">
-			<name>Lucene.Net</name>
-			<purl>pkg:nuget/Lucene.Net@4.8.0-beta00016</purl>
-		</component>
-		<component type="library" bom-ref="lucene-net-analysis-common-4.8.0-beta00016">
-			<name>Lucene.Net.Analysis.Common</name>
-			<purl>pkg:nuget/Lucene.Net.Analysis.Common@4.8.0-beta00016</purl>
-		</component>
-		<component type="library" bom-ref="j2n-2.0.0">
-			<name>J2N</name>
-			<purl>pkg:nuget/J2N@2.0.0</purl>
-		</component>
-		<component type="library" bom-ref="microsoft-extensions-configuration-abstractions-2.0.0">
-			<name>Microsoft.Extensions.Configuration.Abstractions</name>
-			<purl>pkg:nuget/Microsoft.Extensions.Configuration.Abstractions@2.0.0</purl>
-		</component>
-		<component type="library" bom-ref="microsoft-extensions-primitives-2.0.0">
-			<name>Microsoft.Extensions.Primitives</name>
-			<purl>pkg:nuget/Microsoft.Extensions.Primitives@2.0.0</purl>
-		</component>
+		<!-- Transitive dependencies of the PhoenixmlDb packages (Antlr4.Runtime.Standard,
+		     Lucene.Net, Lucene.Net.Analysis.Common, J2N, the Microsoft.Extensions
+		     abstractions, System.Runtime.CompilerServices.Unsafe) resolve automatically
+		     at install time via AnyPackage.NuGet; see polyglot/README.md. -->
 		<component type="library" bom-ref="saxon-ee-12">
 			<name>Saxon-EE</name>
 			<!--<externalReferences>
@@ -326,13 +301,7 @@
 		<composition bom-ref="phoenixml">
 			<aggregate>complete</aggregate>
 			<dependencies>
-				<dependency ref="j2n-2.0.0" />
-				<dependency ref="microsoft-extensions-configuration-abstractions-2.0.0" />
-				<dependency ref="microsoft-extensions-primitives-2.0.0" />
-				<dependency ref="antlr4-runtime-standard-4.13.1" />
-				<dependency ref="lucene-net-4.8.0-beta00016" />
-				<dependency ref="lucene-net-analysis-common-4.8.0-beta00016" />
-				<dependency ref="phoenixml-core-2.6.0" />
+				<dependency ref="phoenixml-core-2.5.0" />
 				<dependency ref="phoenixml-xquery-2.9.0" />
 				<dependency ref="phoenixml-xslt-2.9.0" />
 			</dependencies>
@@ -356,13 +325,7 @@
 				<dependency ref="xmlresolver-mvn" />
 				<dependency ref="xerces" />
 				<dependency ref="schXslt" />
-				<dependency ref="j2n-2.0.0" />
-				<dependency ref="microsoft-extensions-configuration-abstractions-2.0.0" />
-				<dependency ref="microsoft-extensions-primitives-2.0.0" />
-				<dependency ref="antlr4-runtime-standard-4.13.1" />
-				<dependency ref="lucene-net-4.8.0-beta00016" />
-				<dependency ref="lucene-net-analysis-common-4.8.0-beta00016" />
-				<dependency ref="phoenixml-core-2.6.0" />
+				<dependency ref="phoenixml-core-2.5.0" />
 				<dependency ref="phoenixml-xquery-2.9.0" />
 				<dependency ref="phoenixml-xslt-2.9.0" />
 			</dependencies>

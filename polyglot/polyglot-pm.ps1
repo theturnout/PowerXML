@@ -641,6 +641,14 @@ function Get-PackageFromPurl {
       }
       $paths = @($nupkgPath)
     }
+
+    # Transitive dependency resolution via AnyPackage.NuGet (nuget.ps1),
+    # mirroring the Maven POM walk in the maven branch above
+    $dependencyPaths = Resolve-NuGetDependencies -Name $name -Version $version `
+      -LocalRepository $LocalRepository
+    if ($dependencyPaths) {
+      $paths += $dependencyPaths
+    }
   }
   else {
     Write-Host "$($Purl.Type) not supported yet" -ForegroundColor Yellow				

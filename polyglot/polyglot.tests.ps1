@@ -555,8 +555,10 @@ Describe 'Merge-AdditionalPackages' {
 
     It 'Should override the component referenced by the selected composition' {
         [xml]$sbom = Get-Content -Raw -Path "$PSScriptRoot/../sbom.xml"
+        # pester-tests references xmlcalabash-3.0.54; the 3.0.40 component is
+        # outside the composition and must stay untouched
         $unusedComponent = $sbom.bom.components.component |
-            Where-Object { $_."bom-ref" -eq 'xmlcalabash-3.0.54' }
+            Where-Object { $_."bom-ref" -eq 'xmlcalabash-3.0.40' }
         $unusedXml = $unusedComponent.OuterXml
 
         Merge-AdditionalPackages -Sbom $sbom `
@@ -564,7 +566,7 @@ Describe 'Merge-AdditionalPackages' {
             -CompositionRef 'pester-tests'
 
         $selectedComponent = $sbom.bom.components.component |
-            Where-Object { $_."bom-ref" -eq 'xmlcalabash-3.0.40' }
+            Where-Object { $_."bom-ref" -eq 'xmlcalabash-3.0.54' }
         $selectedComponent.purl | Should -Be 'pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.39'
         $selectedComponent.externalReferences.reference.url |
             Should -Be 'pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.39?filename=xmlcalabash-3.0.39.zip'
@@ -807,6 +809,12 @@ Describe 'NuGet PURL support' {
 }
 
 Describe 'Get-PackageFromPurl NuGet handler' {
+    BeforeEach {
+        # Keep these tests offline: without this, dependency resolution calls
+        # AnyPackage.NuGet against nuget.org for the fixture packages
+        Mock Install-PXNuGetPackage -ModuleName polyglot { }
+    }
+
     It 'Should download nupkg from NuGet API' {
         Mock Invoke-WebRequest -ModuleName polyglot -MockWith {}
 

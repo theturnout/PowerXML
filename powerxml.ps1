@@ -19,7 +19,7 @@ The file extension to use for the temporary file if the input is XML content. De
 .PARAMETER TargetEncoding
 The target encoding to use when writing the XML content to a temporary file. Default is "UTF8". Supported encodings include "UTF8", "UTF16", "UTF16LE", "UTF16BE", "ISO-8859-1", and "US-ASCII".
 .NOTES
-Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path) will be returned as-is.
+Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path or URI) is returned as-is. A path-like string that matches no existing file throws: passing it through unchanged would make the processor treat the path text as document content, surfacing later as a confusing XML parse error.
 #>
 function Resolve-PXXmlInput {
     [CmdletBinding()]
@@ -93,6 +93,20 @@ function Resolve-PXXmlInput {
         return $tempFile
     }
     else {
+        # Fail fast: a path-like string that matches no existing file is almost
+        # certainly a mistake. Passing it through unchanged makes the processor
+        # treat the path text as document content, which surfaces later as a
+        # confusing XML parse error ("Data at the root level is invalid") far
+        # from the actual problem. URIs are passed through (processors can
+        # fetch them), and so is text that does not look like a path.
+        if ($InputObject -is [string]) {
+            $isUri = $InputObject -match '^[A-Za-z][A-Za-z0-9+.-]*://'
+            $looksLikePath = (-not $isUri) -and
+                (($InputObject -match '[\\/]') -or ($InputObject -match '\.[A-Za-z0-9]{1,5}$'))
+            if ($looksLikePath -and -not (Test-Path -LiteralPath $InputObject -PathType Leaf)) {
+                throw "Input '$InputObject' is not valid XML and does not match an existing file. Bind an existing file path, a URI, or well-formed XML content."
+            }
+        }
         return $InputObject
     }
 }

@@ -22,15 +22,15 @@ jobs:
           Install-Module -Name Utilities -Scope CurrentUser -Force
         shell: pwsh
 
-      #- name: Lint module
-      #  run: |
-      #    Invoke-ScriptAnalyzer -Path $env:MODULE_PATH -Recurse -Severity Warning,Error
-      #  shell: pwsh
+      - name: Lint module
+        run: |
+          Invoke-ScriptAnalyzer -Path $env:MODULE_PATH -Recurse -Severity Warning,Error
+        shell: pwsh
 
-      #- name: Run tests
-      #  run: |
-      #    Invoke-Pester -Path "$env:MODULE_PATH/test/unit" -Output Detailed
-      #  shell: pwsh
+      - name: Run tests
+        run: |
+          Invoke-Pester -Path "$env:MODULE_PATH/test/unit" -Output Detailed
+        shell: pwsh
 
       # Optional: bump module version from tag, *even for private use*
       - name: Set module version from tag
@@ -60,9 +60,15 @@ jobs:
         with:
           name: ${{ env.MODULE_NAME }}-${{ github.ref_name }}
           path: out
-      - name: Publish PowerShell Module
+      - name: Publish PowerShell Module to Gallery
         uses: natescherer/publish-powershell-action@v1
         with:
           token: ${{ secrets.PSGALLERY }}
           target: gallery
+          path: out
+      - name: Publish PowerShell Module to GitHub
+        uses: natescherer/publish-powershell-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: github
           path: out

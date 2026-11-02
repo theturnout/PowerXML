@@ -656,6 +656,43 @@ Describe 'Input resolution' {
         $content | Should -BeLike "*schema*"
     }
 
+    Context "Missing input fail-fast" {
+        It "Should throw a clear error for a missing InPort file" {
+            { Transform-PXXml -Processing "xslt" -Processor "phoenixml" `
+                    -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                    -InPort @{ source = "./test_data/does-not-exist.xml" } } | Should -Throw "*does not match an existing file*"
+        }
+
+        It "Should throw a clear error for a missing Pipeline file" {
+            { Transform-PXXml -Processor "xmlcalabash" -ClassPath "fake-cp" `
+                    -Pipeline "$PSScriptRoot/test_data/no-such-pipeline.xpl" } | Should -Throw "*does not match an existing file*"
+        }
+
+        It "Should pass a URI through unchanged" {
+            $global:CapturedInPort = $null
+            Mock Invoke-XmlCalabash -ModuleName powerxml {
+                $global:CapturedInPort = $InPort
+                return "ok"
+            }
+            Transform-PXXml -Processor "xmlcalabash" -ClassPath "fake-cp" `
+                -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" `
+                -InPort @{ source = "https://example.com/doc.xml" }
+            $global:CapturedInPort["source"] | Should -Be "https://example.com/doc.xml"
+        }
+
+        It "Should pass non-path-like text content through unchanged" {
+            $global:CapturedInPort = $null
+            Mock Invoke-XmlCalabash -ModuleName powerxml {
+                $global:CapturedInPort = $InPort
+                return "ok"
+            }
+            Transform-PXXml -Processor "xmlcalabash" -ClassPath "fake-cp" `
+                -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" `
+                -InPort @{ source = "plain text content" }
+            $global:CapturedInPort["source"] | Should -Be "plain text content"
+        }
+    }
+
     Context "PURL inputs (deterministic, .NET XSLT path)" {
         BeforeAll {
             # Isolated PolyglotPM repository with pre-installed packages so

@@ -16,6 +16,7 @@ Polyglot enables downloading and managing software dependencies from multiple pa
   - SourceForge
 - **CycloneDX SBOM**: Define software compositions in CycloneDX 1.x XML format
 - **Maven Dependency Resolution**: Recursively resolve and download transitive dependencies from POM files
+- **NuGet Dependency Resolution**: Resolve transitive dependencies via the AnyPackage.NuGet provider
 - **Local Repository**: Cache downloaded artifacts in a local repository
 
 ## Installation
@@ -64,17 +65,19 @@ Get-PackageFromPurl -Purl $purl
 
 Nuances to keep in mind:
 
-- **Transitive dependencies are not resolved.** Unlike Maven, where POM files
-  are walked recursively, the `.nuspec` dependency groups inside a `.nupkg`
-  are ignored. An SBOM composition must list the complete dependency closure.
-  The `phoenixml` composition in the bundled `sbom.xml` is a worked example:
-  the three `PhoenixmlDb.*` packages plus the transitive packages they require
-  (`Antlr4.Runtime.Standard`, `Lucene.Net`, `Lucene.Net.Analysis.Common`,
-  `J2N`, and the `Microsoft.Extensions` abstractions).
-- **Framework facades can be omitted.** Assemblies that ship with the .NET
-  runtime (for example `Microsoft.CSharp` or
-  `System.Runtime.CompilerServices.Unsafe`) are satisfied by the host process
-  and are conventionally not listed.
+- **Transitive dependencies resolve automatically.** With the
+  [AnyPackage.NuGet](https://github.com/anypackage/nuget) provider installed,
+  `Get-PackageFromPurl` resolves each package's complete dependency closure
+  with NuGet's own rules (version ranges, nearest framework group, lowest
+  applicable version, prerelease handling) and materializes it in the local
+  repository — the counterpart of the Maven POM walk. The target framework is
+  derived from the .NET runtime hosting PowerShell (`net10.0` on .NET 10,
+  `netstandard2.0` on Windows PowerShell 5.1); override it with
+  `$env:POWERXML_NUGET_FRAMEWORK`. A `{Name}-{Version}.deps.json` marker
+  records the resolved closure so later calls skip resolution entirely while
+  every listed dependency is still installed. Without the provider,
+  resolution is skipped with a warning and the composition must list its
+  complete closure.
 - **Install layout.** The `.nupkg` (a ZIP archive) is extracted into
   `{Name}-{Version}/`, preserving the package's internal structure
   (`lib/{tfm}/...`). Consumers pick a target-framework directory from there.
@@ -87,7 +90,9 @@ Nuances to keep in mind:
   listed by hand.
 - **Hashes.** Components without `<hashes>` install with a warning. Adding a
   SHA-256 pins the artifact and is verified on install and by
-  `Test-Composition`.
+  `Test-Composition`. Resolved transitive dependencies are not SBOM
+  components and carry no hashes; the root component's hashes pin the entry
+  package.
 
 ### Download from SBOM Composition
 
@@ -163,6 +168,7 @@ Save-SBOM -Sbom $sbom -Path "output-sbom.xml"
 | `polyglot-pm.ps1` | Core package manager logic |
 | `purl.ps1` | PURL parsing (`ConvertFrom-PkgUri`) |
 | `pom.ps1` | Maven POM parsing and dependency resolution |
+| `nuget.ps1` | NuGet transitive dependency resolution (`Resolve-NuGetDependencies`) |
 | `sbom.ps1` | CycloneDX SBOM validation |
 | `download-deps.ps1` | Artifact downloading utilities |
 
@@ -178,6 +184,7 @@ Save-SBOM -Sbom $sbom -Path "output-sbom.xml"
 | `Get-GitHubReleases` | List available releases for a GitHub repository |
 | `Get-MavenArtifact` | Download a Maven artifact (JAR + POM) |
 | `Resolve-Dependencies` | Recursively resolve Maven dependencies |
+| `Resolve-NuGetDependencies` | Resolve and install the transitive dependencies of a NuGet package |
 | `Test-SBOM` | Validate a CycloneDX SBOM document |
 | `Get-SBOM` | Load an existing CycloneDX SBOM file |
 | `Save-SBOM` | Save an SBOM document to a file |
@@ -221,7 +228,7 @@ Invoke-Pester ./polyglot.integration.tests.ps1
 
 ## Limitations
 
-- NuGet transitive dependencies are not resolved automatically; compositions must list the complete dependency closure (Maven POM dependencies, by contrast, are resolved recursively)
+- NuGet transitive dependency resolution requires the AnyPackage.NuGet module; without it, compositions must list the complete dependency closure
 - Parent POM resolution is not currently supported
 - Dependency management sections in POMs are parsed but not fully resolved
 - Some package ecosystems (npm, pypi, etc.) are not yet implemented
