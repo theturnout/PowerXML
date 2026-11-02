@@ -52,6 +52,43 @@ $purl = ConvertFrom-PkgUri "pkg:codeberg/xmlcalabash/xmlcalabash3@3.0.24?filenam
 Get-PackageFromPurl -Purl $purl
 ```
 
+### NuGet Packages
+
+NuGet packages are downloaded from the NuGet v3 flat-container API and installed
+as extracted `.nupkg` archives:
+
+```powershell
+$purl = ConvertFrom-PkgUri "pkg:nuget/PhoenixmlDb.Xslt@2.9.0"
+Get-PackageFromPurl -Purl $purl
+```
+
+Nuances to keep in mind:
+
+- **Transitive dependencies are not resolved.** Unlike Maven, where POM files
+  are walked recursively, the `.nuspec` dependency groups inside a `.nupkg`
+  are ignored. An SBOM composition must list the complete dependency closure.
+  The `phoenixml` composition in the bundled `sbom.xml` is a worked example:
+  the three `PhoenixmlDb.*` packages plus the transitive packages they require
+  (`Antlr4.Runtime.Standard`, `Lucene.Net`, `Lucene.Net.Analysis.Common`,
+  `J2N`, and the `Microsoft.Extensions` abstractions).
+- **Framework facades can be omitted.** Assemblies that ship with the .NET
+  runtime (for example `Microsoft.CSharp` or
+  `System.Runtime.CompilerServices.Unsafe`) are satisfied by the host process
+  and are conventionally not listed.
+- **Install layout.** The `.nupkg` (a ZIP archive) is extracted into
+  `{Name}-{Version}/`, preserving the package's internal structure
+  (`lib/{tfm}/...`). Consumers pick a target-framework directory from there.
+- **Casing.** NuGet package IDs are case-insensitive, but the purl's name
+  casing determines the cached file and directory names; the download URL is
+  always lowercased.
+- **GetLatest.** `-GetLatest` takes the last version in the flat-container
+  index, which may be a prerelease, and does not check compatibility with the
+  rest of the composition — pinned versions are safer when a closure is
+  listed by hand.
+- **Hashes.** Components without `<hashes>` install with a warning. Adding a
+  SHA-256 pins the artifact and is verified on install and by
+  `Test-Composition`.
+
 ### Download from SBOM Composition
 
 ```powershell
@@ -184,6 +221,7 @@ Invoke-Pester ./polyglot.integration.tests.ps1
 
 ## Limitations
 
+- NuGet transitive dependencies are not resolved automatically; compositions must list the complete dependency closure (Maven POM dependencies, by contrast, are resolved recursively)
 - Parent POM resolution is not currently supported
 - Dependency management sections in POMs are parsed but not fully resolved
 - Some package ecosystems (npm, pypi, etc.) are not yet implemented

@@ -650,6 +650,37 @@ namespace PhoenixmlDb.Xslt {
                     -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
                     -InPort @{ source = $inputFile } } | Should -Throw "*PhoenixmlDb.Xslt assembly is not loaded*"
         }
+        
+        It "phoenixml - Should default to the bundled SBOM's phoenixml composition" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            $global:CapturedCompositionParams = $null
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                $global:CapturedCompositionParams = @{
+                    SbomPath          = $SbomPath
+                    TargetComposition = $TargetComposition
+                }
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_default.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><message>Default SBOM</message></root>"
+            $xmlInput.Save($inputFile)
+
+            $result = Transform-PXXml `
+                -Processing "xslt" `
+                -Processor "phoenixml" `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort @{ source = $inputFile }
+
+            # No -PackageResolution: the bundled sbom.xml and its phoenixml
+            # composition are the defaults
+            $global:CapturedCompositionParams.TargetComposition | Should -Be "phoenixml"
+            $global:CapturedCompositionParams.SbomPath | Should -BeLike "*sbom.xml"
+            $global:CapturedCompositionParams.SbomPath | Should -Exist
+            $result | Should -BeLike "*<message>Default SBOM</message>*"
+        }
     }
 
     Context "Error handling" {

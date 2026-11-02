@@ -135,31 +135,6 @@
 			<name>markup-blitz</name>
 			<purl>pkg:maven/de.bottlecaps/markup-blitz@1.8</purl>
 		</component>
-		<!--			<component type="library" bom-ref="coffeefilter">
-			<name>coffeefilter</name>
-			<purl>pkg:github/nineml/coffeefilter@3.2.9</purl>
-			<externalReferences>
-				<reference type="distribution">
-					<url>pkg:github/nineml/coffeefilter@3.2.9?filename=coffeegrinder-3.2.9.zip </url>
-					<hashes>
-						<hash alg="SHA-256"></hash>
-					</hashes>
-				</reference>
-			</externalReferences>						
-		</component>
-		<component type="library" bom-ref="coffeegrinder">
-			<name>coffeegrinder</name>
-			<purl>pkg:github/nineml/coffeegrinder@3.2.9</purl>
-			<externalReferences>
-				<reference type="distribution">
-					<url>pkg:github/nineml/coffeegrinder@3.2.9?filename=coffeegrinder-3.2.9.zip </url>
-					<hashes>
-						<hash alg="SHA-256"></hash>
-					</hashes>
-				</reference>
-			</externalReferences>						
-		</component>
--->
 		<component type="library" bom-ref="morganaxproc-1.8.18">
 			<name>morganaxproc</name>
 			<externalReferences>
@@ -172,9 +147,6 @@
 				<hash alg="SHA-1">298e5d24816c05d0cae5babe56e21538368c2993</hash>
 			</hashes>
 			<purl>pkg:sourceforge/morganaxproc-IIIse@1.8.18</purl>
-			<properties>
-				<property name="rootZip">MorganaXProc-IIIse-1.8.18</property>
-			</properties>
 		</component>
 		<component type="library" bom-ref="morganaxproc-1.8.2">
 			<name>morganaxproc</name>
@@ -289,6 +261,47 @@
 			</hashes>
 			<purl>pkg:maven/net.sf.saxon/Saxon-HE@11.5</purl>
 		</component>
+		<component type="library" bom-ref="phoenixml-core-2.6.0">
+			<name>PhoenixmlDb.Core</name>
+			<purl>pkg:nuget/PhoenixmlDb.Core@2.6.0</purl>
+		</component>
+		<component type="library" bom-ref="phoenixml-xquery-2.9.0">
+			<name>PhoenixmlDb.XQuery</name>
+			<purl>pkg:nuget/PhoenixmlDb.XQuery@2.9.0</purl>
+		</component>
+		<component type="library" bom-ref="phoenixml-xslt-2.9.0">
+			<name>PhoenixmlDb.Xslt</name>
+			<purl>pkg:nuget/PhoenixmlDb.Xslt@2.9.0</purl>
+		</component>
+		<!-- Transitive dependencies of the PhoenixmlDb packages: the PolyglotPM
+		     NuGet handler does not walk nupkg dependency groups, so the complete
+		     closure is listed explicitly. Framework facades (Microsoft.CSharp,
+		     System.Runtime.CompilerServices.Unsafe) are provided by the .NET
+		     runtime and are not listed. -->
+		<component type="library" bom-ref="antlr4-runtime-standard-4.13.1">
+			<name>Antlr4.Runtime.Standard</name>
+			<purl>pkg:nuget/Antlr4.Runtime.Standard@4.13.1</purl>
+		</component>
+		<component type="library" bom-ref="lucene-net-4.8.0-beta00016">
+			<name>Lucene.Net</name>
+			<purl>pkg:nuget/Lucene.Net@4.8.0-beta00016</purl>
+		</component>
+		<component type="library" bom-ref="lucene-net-analysis-common-4.8.0-beta00016">
+			<name>Lucene.Net.Analysis.Common</name>
+			<purl>pkg:nuget/Lucene.Net.Analysis.Common@4.8.0-beta00016</purl>
+		</component>
+		<component type="library" bom-ref="j2n-2.0.0">
+			<name>J2N</name>
+			<purl>pkg:nuget/J2N@2.0.0</purl>
+		</component>
+		<component type="library" bom-ref="microsoft-extensions-configuration-abstractions-2.0.0">
+			<name>Microsoft.Extensions.Configuration.Abstractions</name>
+			<purl>pkg:nuget/Microsoft.Extensions.Configuration.Abstractions@2.0.0</purl>
+		</component>
+		<component type="library" bom-ref="microsoft-extensions-primitives-2.0.0">
+			<name>Microsoft.Extensions.Primitives</name>
+			<purl>pkg:nuget/Microsoft.Extensions.Primitives@2.0.0</purl>
+		</component>
 		<component type="library" bom-ref="saxon-ee-12">
 			<name>Saxon-EE</name>
 			<!--<externalReferences>
@@ -306,8 +319,22 @@
 		<composition bom-ref="pester-tests">
 			<aggregate>complete</aggregate>
 			<dependencies>
-				<dependency ref="xmlcalabash-3.0.40" />
-				<dependency ref="morganaxproc-1.8.2" />
+				<dependency ref="xmlcalabash-3.0.54" />
+				<dependency ref="morganaxproc-1.8.18" />
+			</dependencies>
+		</composition>
+		<composition bom-ref="phoenixml">
+			<aggregate>complete</aggregate>
+			<dependencies>
+				<dependency ref="j2n-2.0.0" />
+				<dependency ref="microsoft-extensions-configuration-abstractions-2.0.0" />
+				<dependency ref="microsoft-extensions-primitives-2.0.0" />
+				<dependency ref="antlr4-runtime-standard-4.13.1" />
+				<dependency ref="lucene-net-4.8.0-beta00016" />
+				<dependency ref="lucene-net-analysis-common-4.8.0-beta00016" />
+				<dependency ref="phoenixml-core-2.6.0" />
+				<dependency ref="phoenixml-xquery-2.9.0" />
+				<dependency ref="phoenixml-xslt-2.9.0" />
 			</dependencies>
 		</composition>
 		<composition bom-ref="saxon-he">
@@ -329,6 +356,15 @@
 				<dependency ref="xmlresolver-mvn" />
 				<dependency ref="xerces" />
 				<dependency ref="schXslt" />
+				<dependency ref="j2n-2.0.0" />
+				<dependency ref="microsoft-extensions-configuration-abstractions-2.0.0" />
+				<dependency ref="microsoft-extensions-primitives-2.0.0" />
+				<dependency ref="antlr4-runtime-standard-4.13.1" />
+				<dependency ref="lucene-net-4.8.0-beta00016" />
+				<dependency ref="lucene-net-analysis-common-4.8.0-beta00016" />
+				<dependency ref="phoenixml-core-2.6.0" />
+				<dependency ref="phoenixml-xquery-2.9.0" />
+				<dependency ref="phoenixml-xslt-2.9.0" />
 			</dependencies>
 		</composition>
 		<composition bom-ref="oscal-old">

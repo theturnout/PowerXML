@@ -35,6 +35,8 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 
 ## Installation
 
+### From GitHub Repository
+
 ```powershell
 # Clone the repository
 git clone https://github.com/theturnout/PowerXML.git
@@ -44,6 +46,12 @@ Import-Module ./powerxml.psm1 -Force
 ```
 
 Future releases will be available via package manager.
+
+### From PowerShell Gallery
+
+```powershell
+Install-Module -Name powerxml -Scope CurrentUser
+```
 
 ## Quick Start
 

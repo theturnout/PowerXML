@@ -5,8 +5,9 @@
     Handles post-download concerns: hash verification, zip extraction,
     wrapper directory renaming, and cleanup. The archive's wrapper directory
     is auto-detected from its structure; archives without one are extracted
-    directly into the canonical "$Name-$Version" directory. Idempotent — skips
-    if the target directory already exists.
+    directly into the canonical "$Name-$Version" directory. macOS packaging
+    junk (the __MACOSX directory and AppleDouble ._* entries) is ignored and
+    never installed. Idempotent — skips if the target directory already exists.
 .PARAMETER DownloadedPath
     Path to the downloaded artifact file (e.g. a .zip or .jar).
 .PARAMETER Name
@@ -35,7 +36,9 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyCon
 .DESCRIPTION
     Returns the single top-level directory name when every archive entry lives
     underneath it, and $null when the archive has no wrapper (entries at the
-    archive root). Unreadable archives also return $null.
+    archive root). macOS packaging junk (the __MACOSX resource-fork directory
+    and AppleDouble ._* entries) is ignored, so Finder-created archives still
+    detect their wrapper. Unreadable archives also return $null.
 .PARAMETER Path
     Path to the archive file.
 .OUTPUTS
@@ -58,6 +61,15 @@ function Get-ArchiveRoot {
     }
     try {
         $entryNames = @($archive.Entries | ForEach-Object { $_.FullName } | Where-Object { $_ })
+        # macOS-created archives carry packaging junk alongside the real
+        # content: the __MACOSX resource-fork tree and AppleDouble (._*)
+        # metadata entries. They are not content, so they must not count as
+        # archive roots — otherwise the archive appears to have multiple roots,
+        # wrapper detection fails, and the package installs one level too deep.
+        $entryNames = @($entryNames | Where-Object {
+            $firstSegment = ($_ -split "/")[0]
+            ($firstSegment -ne "__MACOSX") -and (-not $firstSegment.StartsWith("._"))
+        })
         if ($entryNames.Count -eq 0) {
             return $null
         }

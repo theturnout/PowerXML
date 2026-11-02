@@ -57,6 +57,34 @@ For each dependency listed in the selected SBOM composition:
 4. **Install and verify** — `Install-Package` extracts archives and validates
    file hashes against the SBOM (unless hash validation was skipped by GetLatest).
 
+## NuGet specifics
+
+The `nuget` branch of `Get-PackageFromPurl` is deliberately simpler than the
+Maven path; the differences below are behavioral contracts, not gaps:
+
+- **Download** —
+  `https://api.nuget.org/v3-flatcontainer/{id-lower}/{version}/{id-lower}.{version}.nupkg`,
+  saved as `{Name}-{Version}.nupkg` in the local repository. The URL is
+  lowercased NuGet-style; the purl's casing is kept for the cached file and
+  directory names.
+- **Install** — a `.nupkg` is a ZIP archive and flows through the same
+  `Install-Package` path as any other archive, including the temporary
+  `.zip` copy Windows PowerShell 5.1 needs. Nupkgs have multiple archive
+  roots (`[Content_Types].xml`, `_rels/`, `lib/`, ...), so wrapper detection
+  finds none and the contents are extracted directly into the canonical
+  `{Name}-{Version}/` directory, leaving the `lib/{tfm}/` layout intact.
+- **No nuspec dependency resolution** — dependency groups in the package's
+  `.nuspec` are ignored. Only Maven POMs are walked (`pom.ps1`); every NuGet
+  dependency, transitive or not, must appear as a component referenced by
+  the composition. The `phoenixml` composition in the bundled `sbom.xml` is
+  a worked example of a complete closure.
+- **Latest version** — `Resolve-LatestVersion` takes the last entry of the
+  flat-container version index, which includes prereleases, so `-GetLatest`
+  may resolve a prerelease version for a NuGet component.
+- **Idempotency** — an existing `{Name}-{Version}` directory short-circuits
+  the download; `Test-Composition` reports installed state without network
+  access.
+
 ## Version cache
 
 `Resolve-LatestVersion` maintains an in-memory cache (`$Script:LatestVersionCache`)

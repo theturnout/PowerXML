@@ -461,4 +461,63 @@ Describe 'Install-Package' {
             @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 0
         }
     }
+
+    Context 'macOS-created archives (__MACOSX junk)' {
+        BeforeEach {
+            # Real Finder-style archive: a wrapper directory alongside a
+            # __MACOSX resource-fork tree and a root-level AppleDouble (._*) entry
+            $macBase = Join-Path $TestDrive "macsrc-$(New-Guid)"
+            $macWrapper = Join-Path $macBase "MyLib-5.5.5"
+            New-Item -ItemType Directory -Path $macWrapper -Force | Out-Null
+            Set-Content -Path (Join-Path $macWrapper "MyLib.jar") -Value "jar content" -NoNewline
+            $script:macZip = Join-Path $script:LocalRepo "mylib-5.5.5.zip"
+            Compress-Archive -Path (Join-Path $macBase "*") -DestinationPath $script:macZip -Force
+
+            # Inject the junk a Finder "Compress" adds. Resolve the PSDrive
+            # path (e.g. TestDrive:/) to a real filesystem path first — the
+            # .NET zip API cannot open PSDrive paths.
+            $realZipPath = Convert-Path -Path $script:macZip
+            $archive = [System.IO.Compression.ZipFile]::Open($realZipPath,
+                [System.IO.Compression.ZipArchiveMode]::Update)
+            try {
+                $null = $archive.CreateEntry("__MACOSX/MyLib-5.5.5/._MyLib.jar")
+                $null = $archive.CreateEntry("__MACOSX/._MyLib-5.5.5")
+                $null = $archive.CreateEntry("._mylib-5.5.5.zip")
+            }
+            finally {
+                $archive.Dispose()
+            }
+        }
+
+        It 'Should detect the wrapper directory despite __MACOSX and ._* entries' {
+            Get-ArchiveRoot -Path $script:macZip | Should -Be "MyLib-5.5.5"
+        }
+
+        It 'Should install wrapper contents at the top level without the junk' {
+            $result = Install-Package -DownloadedPath $script:macZip `
+                -Name "mylib" -Version "5.5.5" `
+                -LocalRepository $script:LocalRepo
+
+            $expected = Join-Path $script:LocalRepo "mylib-5.5.5"
+            $result | Should -Be $expected
+            Test-Path (Join-Path $expected "MyLib.jar") | Should -Be $true
+            # Neither the junk nor a nested wrapper lands in the package directory
+            Test-Path (Join-Path $expected "__MACOSX") | Should -Be $false
+            Test-Path (Join-Path $expected "MyLib-5.5.5") | Should -Be $false
+            Test-Path (Join-Path $expected "._mylib-5.5.5.zip") | Should -Be $false
+            # And nothing is sprayed into the repository root
+            Test-Path (Join-Path $script:LocalRepo "__MACOSX") | Should -Be $false
+        }
+
+        It 'Should not warn when ZipRoot matches the detected wrapper' {
+            Install-Package -DownloadedPath $script:macZip `
+                -Name "mylib" -Version "5.5.5" `
+                -ZipRoot "MyLib-5.5.5" `
+                -LocalRepository $script:LocalRepo `
+                -WarningAction SilentlyContinue -WarningVariable warnings
+
+            $warnings | Should -BeNullOrEmpty
+            Test-Path (Join-Path $script:LocalRepo "mylib-5.5.5/MyLib.jar") | Should -Be $true
+        }
+    }
 }

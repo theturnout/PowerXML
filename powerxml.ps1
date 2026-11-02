@@ -837,9 +837,11 @@ function Transform-PXXml {
                 -Parameters $Options
         }
         elseif ($Processor -eq "phoenixml") {
-            # Phoenixml requires NuGet package resolution
+            # Phoenixml requires NuGet package resolution. The PhoenixmlDb
+            # packages come from an SBOM: an explicit -PackageResolution.SbomPath,
+            # or the bundled sbom.xml by default.
             $localRepository = Get-LocalRepositoryPath
-            $sbomPath = if ($PackageResolution -and $PackageResolution.SbomPath) { $PackageResolution.SbomPath } else { $null }
+            $sbomPath = if ($PackageResolution -and $PackageResolution.SbomPath) { $PackageResolution.SbomPath } else { "$PSScriptRoot\sbom.xml" }
             $targetComposition = if ($PackageResolution) { $PackageResolution.TargetComposition } else { $null }
             $getLatest = if ($PackageResolution) { [bool]$PackageResolution.GetLatest } else { $false }
             $additionalPackages = if ($PackageResolution -and $PackageResolution.AdditionalPackages) {
@@ -850,27 +852,19 @@ function Transform-PXXml {
 
             $compositionParams = @{
                 LocalRepository = $localRepository
+                SbomPath        = $sbomPath
             }
-            if ($sbomPath) {
-                $compositionParams.SbomPath = $sbomPath
+            # Without an explicit target, resolve the SBOM's "phoenixml"
+            # composition (the first composition would be an XProc one)
+            if (-not $targetComposition) {
+                $targetComposition = "phoenixml"
             }
-            if ($targetComposition) {
-                $compositionParams.TargetComposition = $targetComposition
-            }
+            $compositionParams.TargetComposition = $targetComposition
             if ($getLatest) {
                 $compositionParams.GetLatest = $true
             }
             if ($validateSbom) {
                 $compositionParams.ValidateSbom = $true
-            }
-
-            # Default AdditionalPackages for phoenixml when no SBOM or packages specified
-            if (-not $sbomPath -and -not $additionalPackages) {
-                $additionalPackages = @(
-                    'pkg:nuget/PhoenixmlDb.Core@1.0.13',
-                    'pkg:nuget/PhoenixmlDb.XQuery@1.0.5',
-                    'pkg:nuget/PhoenixmlDb.Xslt@1.0.0'
-                )
             }
             if ($additionalPackages) {
                 $compositionParams.AdditionalPackages = $additionalPackages
