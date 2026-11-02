@@ -1,7 +1,7 @@
 # Remove and re-import PowerXML module
 Remove-Module powerxml -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot/powerxml.psm1" -Force
-Describe 'Transform-Xml XSLT Processing' {
+Describe 'Transform-PXXml XSLT Processing' {
     BeforeAll {
         Import-Module "$PSScriptRoot/powerxml.psm1" -Force -DisableNameChecking
     }
@@ -20,7 +20,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root><message>Hello, World!</message></root>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -40,7 +40,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root><data>Test Data</data></root>"
             $xmlInput.Save($inputFile)
             
-            Transform-Xml `
+            Transform-PXXml `
                 -Processing "xslt" `
                 -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -61,7 +61,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root/>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
@@ -80,7 +80,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root/>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
@@ -96,7 +96,7 @@ Describe 'Transform-Xml XSLT Processing' {
             }
             [xml]$xmlInput = "<?xml version='1.0'?><root><item>Object Test</item></root>"
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor $_.Name `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -116,13 +116,35 @@ Describe 'Transform-Xml XSLT Processing' {
             
             $xslString = Get-Content "$PSScriptRoot/test_data/identity.xsl" -Raw
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor $_.Name `
                 -Pipeline $xslString `
                 -InPort @{ source = $inputFile }
             
             $result | Should -BeLike "*<data>String XSL Test</data>*"
+        }
+        
+        It "$($_.Name) - Should accept single values for InPort and OutPort" {
+            if ($_.Name -eq "msxml" -and (-not $IsWindows -and ($PSVersionTable.PSEdition -eq 'Core'))) {
+                Set-ItResult -Skipped -Because "MSXML is only available on Windows"
+                return
+            }
+            $inputFile = "$TestDrive/xslt_defport_input.xml"
+            $outputFile = "$TestDrive/xslt_defport_output.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><data>DefaultPort XSLT</data></root>"
+            $xmlInput.Save($inputFile)
+            
+            Transform-PXXml `
+                -Processing "xslt" `
+                -Processor $_.Name `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort $inputFile `
+                -OutPort $outputFile
+            
+            Test-Path $outputFile | Should -Be $true
+            $content = Get-Content $outputFile -Raw
+            $content | Should -BeLike "*<data>DefaultPort XSLT</data>*"
         }
     }
     
@@ -150,7 +172,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root><message>Hello, Altova!</message></root>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "altova" `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -171,7 +193,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root><data>Altova File Test</data></root>"
             $xmlInput.Save($inputFile)
             
-            Transform-Xml `
+            Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "altova" `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -193,7 +215,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root/>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "altova" `
                 -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
@@ -212,7 +234,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root/>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "altova" `
                 -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
@@ -251,7 +273,7 @@ Describe 'Transform-Xml XSLT Processing' {
 "@
             [System.IO.File]::WriteAllText($inputFile, $orderXml, [System.Text.Encoding]::UTF8)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "altova" `
                 -Pipeline "$PSScriptRoot/test_data/order-total.xsl" `
@@ -290,7 +312,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [System.IO.File]::WriteAllText($inputFile, $invalidOrderXml, [System.Text.Encoding]::UTF8)
             
             # Should throw because XML doesn't validate against the imported schema
-            { Transform-Xml `
+            { Transform-PXXml `
                     -Processing "xslt" `
                     -Processor "altova" `
                     -Pipeline "$PSScriptRoot/test_data/order-total.xsl" `
@@ -320,7 +342,7 @@ Describe 'Transform-Xml XSLT Processing' {
         #"@
         #            [System.IO.File]::WriteAllText($inputFile, $productXml, [System.Text.Encoding]::UTF8)
         #            
-        #            $result = Transform-Xml `
+        #            $result = Transform-PXXml `
         #                -Processing "xslt" `
         #                -Processor "altova" `
         #                -Pipeline "$PSScriptRoot/test_data/product-invoice.xsl" `
@@ -360,7 +382,7 @@ Describe 'Transform-Xml XSLT Processing' {
         #        [xml]$xmlInput = "<?xml version='1.0'?><root/>"
         #        $xmlInput.Save($inputFile)
         #        
-        #        { Transform-Xml `
+        #        { Transform-PXXml `
         #                -Processing "xslt" `
         #                -Processor "altova" `
         #                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -383,7 +405,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root><message>Hello, xsltproc!</message></root>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "xsltproc" `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -403,7 +425,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root><data>xsltproc File Test</data></root>"
             $xmlInput.Save($inputFile)
             
-            Transform-Xml `
+            Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "xsltproc" `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -424,7 +446,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root/>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "xsltproc" `
                 -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
@@ -443,7 +465,7 @@ Describe 'Transform-Xml XSLT Processing' {
             [xml]$xmlInput = "<?xml version='1.0'?><root/>"
             $xmlInput.Save($inputFile)
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "xsltproc" `
                 -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
@@ -459,7 +481,7 @@ Describe 'Transform-Xml XSLT Processing' {
             }
             [xml]$xmlInput = "<?xml version='1.0'?><root><item>Object Test</item></root>"
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "xsltproc" `
                 -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -479,7 +501,7 @@ Describe 'Transform-Xml XSLT Processing' {
             
             $xslString = Get-Content "$PSScriptRoot/test_data/identity.xsl" -Raw
             
-            $result = Transform-Xml `
+            $result = Transform-PXXml `
                 -Processing "xslt" `
                 -Processor "xsltproc" `
                 -Pipeline $xslString `
@@ -489,13 +511,154 @@ Describe 'Transform-Xml XSLT Processing' {
         }
     }
 
+    Context "PhoenixmlDb.Xslt processor (XSLT 3.0/4.0)" {
+        BeforeAll {
+            if ($PSVersionTable.PSEdition -ne 'Core') { return }
+
+            # Compile a mock PhoenixmlDb.Xslt assembly into a NuGet package directory
+            # structure so the assembly-loading code in Invoke-PhoenixmlXslt is
+            # exercised end-to-end (TFM resolution, Add-Type -Path, type check).
+            # Placed outside TestDrive because the loaded DLL is locked by the
+            # runtime and Pester's cleanup would fail trying to delete it.
+            $script:MockPkgDir = Join-Path ([System.IO.Path]::GetTempPath()) 'pxml-mock-phoenixml'
+            $mockLibDir = Join-Path $script:MockPkgDir 'lib' 'net9.0'
+            New-Item -ItemType Directory -Path $mockLibDir -Force | Out-Null
+
+            $mockDllPath = Join-Path $mockLibDir 'PhoenixmlDb.Xslt.dll'
+            if (-not (Test-Path $mockDllPath)) {
+                $mockCode = @"
+namespace PhoenixmlDb.Xslt {
+    using System;
+    using System.Collections.Generic;
+    using System.Threading.Tasks;
+    public class XsltTransformer {
+        public Task LoadStylesheetAsync(string stylesheet, Uri baseUri) {
+            return Task.CompletedTask;
+        }
+        public void SetParameter(string name, string value) { }
+        public void SetInitialTemplate(string name, string ns) { }
+        public void SetSourceDocumentUri(Uri uri) { }
+        public Task<string> TransformAsync(string input) {
+            return Task.FromResult(input ?? "<result/>");
+        }
+        public Dictionary<string, string> SecondaryResultDocuments { get; } = new();
+    }
+}
+"@
+                Add-Type -TypeDefinition $mockCode -OutputAssembly $mockDllPath
+            }
+        }
+        
+        It "phoenixml - Should load assemblies from NuGet package and run transform" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_input.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><message>Hello, Phoenixml!</message></root>"
+            $xmlInput.Save($inputFile)
+            
+            $result = Transform-PXXml `
+                -Processing "xslt" `
+                -Processor "phoenixml" `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort @{ source = $inputFile }
+            
+            # Mock transformer returns input content as-is
+            $result | Should -BeLike "*<root>*"
+            $result | Should -BeLike "*<message>Hello, Phoenixml!</message>*"
+        }
+        
+        It "phoenixml - Should output to file" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_input2.xml"
+            $outputFile = "$TestDrive/phoenixml_output.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root><data>Phoenixml File Test</data></root>"
+            $xmlInput.Save($inputFile)
+            
+            Transform-PXXml `
+                -Processing "xslt" `
+                -Processor "phoenixml" `
+                -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                -InPort @{ source = $inputFile } `
+                -OutPort @{ result = $outputFile }
+            
+            Test-Path $outputFile | Should -Be $true
+            $content = Get-Content $outputFile -Raw
+            $content | Should -BeLike "*<data>Phoenixml File Test</data>*"
+        }
+        
+        It "phoenixml - Should accept and pass parameters without error" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($script:MockPkgDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_input3.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root/>"
+            $xmlInput.Save($inputFile)
+            
+            # Mock transformer doesn't evaluate the stylesheet, so output won't
+            # reflect parameter substitution. Verify the full code path
+            # (SetParameter calls, TransformAsync) completes without error.
+            { Transform-PXXml `
+                    -Processing "xslt" `
+                    -Processor "phoenixml" `
+                    -Pipeline "$PSScriptRoot/test_data/hello.xsl" `
+                    -InPort @{ source = $inputFile } `
+                    -Options @{ greeting = "Greetings"; name = "PhoenixmlUser" } } | Should -Not -Throw
+        }
+        
+        It "phoenixml - Should throw when no assemblies resolve the type" {
+            if ($PSVersionTable.PSEdition -ne 'Core') {
+                Set-ItResult -Skipped -Because "Requires PowerShell Core (.NET runtime)"
+                return
+            }
+            # Once the mock DLL has been loaded by a prior test the type persists
+            # in the session, so this error path can only be verified on first run.
+            $typeLoaded = $false
+            try { $null = [PhoenixmlDb.Xslt.XsltTransformer]; $typeLoaded = $true } catch {}
+            if ($typeLoaded) {
+                Set-ItResult -Skipped -Because "Type already loaded from earlier test in this session"
+                return
+            }
+            
+            # Point to an empty directory with no lib/ sub-tree
+            $emptyDir = Join-Path $TestDrive 'empty-pkg'
+            New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+            Mock Copy-SoftwareComposition -ModuleName powerxml -MockWith {
+                return @($emptyDir)
+            }
+            $inputFile = "$TestDrive/phoenixml_err.xml"
+            [xml]$xmlInput = "<?xml version='1.0'?><root/>"
+            $xmlInput.Save($inputFile)
+            
+            { Transform-PXXml `
+                    -Processing "xslt" `
+                    -Processor "phoenixml" `
+                    -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                    -InPort @{ source = $inputFile } } | Should -Throw "*PhoenixmlDb.Xslt assembly is not loaded*"
+        }
+    }
+
     Context "Error handling" {
         # It "Should throw error for unsupported processor" {
         #     $inputFile = "$TestDrive/xslt_err_input.xml"
         #     [xml]$xmlInput = "<?xml version='1.0'?><root/>"
         #     $xmlInput.Save($inputFile)
         #     
-        #     { Transform-Xml `
+        #     { Transform-PXXml `
         #             -Processing "xslt" `
         #             -Processor "unsupported" `
         #             -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
@@ -503,7 +666,7 @@ Describe 'Transform-Xml XSLT Processing' {
         # }
         
         It "Should throw error when no input XML provided" {
-            { Transform-Xml `
+            { Transform-PXXml `
                     -Processing "xslt" `
                     -Processor "dotnet" `
                     -Pipeline "$PSScriptRoot/test_data/identity.xsl" } | Should -Throw "*requires input XML*"

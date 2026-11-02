@@ -18,10 +18,15 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 
 ## Features
 
-- **Unified API** – Single `Transform-Xml` CmdLet supports both XProc and XSLT processing
-- **Flexible Input** – Accept file paths, XML strings, or .NET XML objects as input
+- **Unified API** – Single `Transform-PXXml` CmdLet supports both XProc and XSLT processing
+- **Composition Registry** – Register, select, and inspect software compositions per session; resolved paths are cached so PolyglotPM runs once per composition instead of on every call
+- **Direct Step Execution** – Run a single XProc step (e.g. `-Step "p:xslt"`) without writing a pipeline; XML Calabash runs steps natively, MorganaXProc uses a synthesized wrapper
+- **Flexible Input** – Accept file paths, URIs, Package URLs, XML strings, or .NET XML objects as input
 - **Port Binding** – Route multiple inputs/outputs through named ports
 - **Polyglot Package Manager** – Automatic dependency resolution using CycloneDX SBOM
+- **Auto-Configuration** – Processor configs are auto-generated with detected defaults (Saxon connector detection, iXML connectors); override with a `-Configuration` hashtable
+- **Multipart MIME** – Multi-document inputs and outputs travel as one `multipart/mixed` file with `X-Port` port routing (`-MultiplexOutput`, auto-detected input files)
+- **Bring Your Own Jars** – `-ClassPath` runs XProc processors against a caller-managed Java classpath, bypassing PolyglotPM entirely
 
 ## Requirements
 
@@ -35,7 +40,7 @@ PowerXML provides a unified interface for executing XML transformations from Pow
 git clone https://github.com/theturnout/PowerXML.git
 
 # Import the module
-Import-Module ./PowerXML/powerxml.psm1 -Force
+Import-Module ./powerxml.psm1 -Force
 ```
 
 Future releases will be available via package manager.
@@ -46,15 +51,15 @@ Future releases will be available via package manager.
 
 ```powershell
 # Run a simple XProc pipeline
-Transform-Xml -Pipeline "./pipelines/hello.xpl"
+Transform-PXXml -Pipeline "./test_data/helloWorld.xpl"
 
 # With input and output ports
-Transform-Xml -Pipeline "./pipelines/transform.xpl" `
-    -InPort @{ source = "./input.xml" } `
-    -OutPort @{ result = "./output.xml" }
+Transform-PXXml -Pipeline "./test_data/xmlpassthru.xpl" `
+    -InPort @{ source = "./test_data/order.xml" } `
+    -OutPort @{ result = "./test_data/out/order-total.out.xml" }
 
 # Pass options to the pipeline
-Transform-Xml -Pipeline "./pipelines/greet.xpl" `
+Transform-PXXml -Pipeline "./test_data/optionalHelloWorld.xpl" `
     -Options @{ name = "World" }
 ```
 
@@ -62,56 +67,81 @@ Transform-Xml -Pipeline "./pipelines/greet.xpl" `
 
 ```powershell
 # Using .NET XSLT processor
-Transform-Xml -Processing "xslt" -Processor "dotnet" `
-    -Pipeline "./styles/transform.xsl" `
-    -InPort @{ source = "./data.xml" }
+Transform-PXXml -Processing "xslt" -Processor "dotnet" `
+    -Pipeline "./test_data/hello.xsl" `
+    -InPort @{ source = "./test_data/order.xml" }
 
 # Using MSXML (Windows)
-Transform-Xml -Processing "xslt" -Processor "msxml" `
-    -Pipeline "./styles/transform.xsl" `
-    -InPort @{ source = "./data.xml" } `
-    -OutPort @{ result = "./output.xml" }
+Transform-PXXml -Processing "xslt" -Processor "msxml" `
+    -Pipeline "./test_data/hello.xsl" `
+    -InPort @{ source = "./test_data/order.xml" } `
+    -OutPort @{ result = "./test_data/out/hello.out.xml" }
 ```
 
 ### Working with XML Objects
 
 ```powershell
 # Pass .NET XML object as pipeline
-[xml]$pipeline = Get-Content "./pipeline.xpl" -Raw
-Transform-Xml -Pipeline $pipeline
+[xml]$pipeline = Get-Content "./test_data/helloWorld.xpl" -Raw
+Transform-PXXml -Pipeline $pipeline
 
 # Pass XML string as input
 $xmlInput = "<root><item>Hello</item></root>"
-Transform-Xml -Pipeline "./transform.xpl" `
+Transform-PXXml -Pipeline "./test_data/xmlpassthru.xpl" `
     -InPort @{ source = $xmlInput }
 ```
 See [USAGE.md](USAGE.md) for more examples and advanced usage scenarios.
 
 ## API Reference
 
-### Transform-Xml
+### Transform-PXXml
 
-Main function for XML transformations. Full documentation available via `Get-Help Transform-Xml`.
+Main function for XML transformations. Full documentation available via `Get-Help Transform-PXXml`.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object) |
+| `-Pipeline` | string/xml | XProc pipeline or XSLT stylesheet (file path, XML string, or object); mutually exclusive with `-Step` |
+| `-Step` | string | Run an XProc step directly, e.g. `p:xslt` or unprefixed `identity`; bound ports become the step's ports |
 | `-Processing` | string | Processing type: `xproc` (default) or `xslt` |
-| `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc` |
-| `-InPort` | hashtable | Input port bindings: `@{ portName = "file.xml" }` |
-| `-OutPort` | hashtable | Output port bindings: `@{ portName = "output.xml" }` |
+| `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc`, `phoenixml` |
+| `-InPort` | hashtable/string/xml | Input port bindings: `@{ portName = "./test_data/order.xml" }`; a single value binds to the pipeline's primary input port |
+| `-OutPort` | hashtable/string | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }`; a single value binds to the pipeline's primary output port |
 | `-Options` | hashtable | Pipeline options/parameters |
-| `-targetComposition` | string | SBOM composition for dependency resolution |
+| `-PackageResolution` | hashtable | Dependency resolution settings: `SbomPath`, `TargetComposition`, `GetLatest`, `AdditionalPackages`, `ValidateSbom`; when omitted, the session default composition (see `Select-PXComposition`) is used |
 | `-Namespace` | hashtable | Namespace bindings: `@{ prefix = "uri" }` |
-| `-catalog` | string | XML catalog file path |
-| `-passthrough` | array | Arguments passed directly to the processor |
-| `-passthroughJava` | array | Arguments passed to the JVM |
+| `-Catalog` | string | XML catalog file path |
+| `-Passthrough` | array | Arguments passed directly to the processor |
+| `-PassthroughJava` | array | Arguments passed to the JVM |
+| `-MultiplexOutput` | string | XProc only: write all outputs (STDOUT + bound ports) to one multipart/mixed file with `X-Port` headers |
+| `-ClassPath` | string | XProc only: a ready-made Java classpath used verbatim, bypassing PolyglotPM dependency resolution |
+
+### Composition Registry
+
+Session-scoped software compositions, used by `Transform-PXXml` when no `-PackageResolution` is given (explicit entries take precedence). Compositions resolve once and cache their paths:
+
+```powershell
+Register-PXComposition -Name "my-tests" -TargetComposition "pester-tests"
+Select-PXComposition -Name "my-tests"
+Get-PXComposition
+Unregister-PXComposition -Name "my-tests"
+```
+
+### Namespace Registry
+
+Session-scoped namespace declarations, merged into every `Transform-PXXml` XProc invocation (explicit `-Namespace` entries take precedence):
+
+```powershell
+Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
+Get-PXNamespace
+Unregister-PXNamespace -Prefix "pre"
+```
 
 ## Dependency Management
 
-PowerXML uses CycloneDX SBOM format (`sbom.xml`) to declare and manage Java dependencies. Dependencies are automatically downloaded from:
+PowerXML uses CycloneDX SBOM format (`sbom.xml`) to declare and manage dependencies. Dependencies are automatically downloaded from:
 
 - Maven Central
+- NuGet
 - GitHub Releases  
 - Codeberg Releases
 - SourceForge
@@ -124,17 +154,26 @@ The SBOM defines named "compositions" that group dependencies for specific use c
 
 ```xml
 <composition bom-ref="pester-tests">
+    <aggregate>complete</aggregate>
     <dependencies>
-        <dependency ref="xmlcalabash-3"/>
-        <dependency ref="morganaxproc-1.8"/>
+        <dependency ref="xmlcalabash-3.0.40"/>
+        <dependency ref="morganaxproc-1.8.2"/>
     </dependencies>
 </composition>
 ```
 
-Use the `-targetComposition` parameter to select a composition:
+Use the `-TargetComposition` parameter to select a composition:
 
 ```powershell
-Transform-Xml -Pipeline "./test.xpl" -targetComposition "pester-tests"
+Transform-PXXml -Pipeline "./test_data/helloWorld.xpl" -TargetComposition "pester-tests"
+```
+
+### Validating Compositions
+
+To verify that a composition's dependencies are present in the local repository and still match their SBOM hashes, without downloading anything:
+
+```powershell
+Test-Composition -SbomPath "./sbom.xml" -TargetComposition "pester-tests"
 ```
 
 ## Project Structure
@@ -143,7 +182,7 @@ Transform-Xml -Pipeline "./test.xpl" -targetComposition "pester-tests"
 PowerXML/
 ├── powerxml.psm1       # Module definition
 ├── powerxml.psd1       # Module manifest
-├── powerxml.ps1        # Core Transform-Xml function
+├── powerxml.ps1        # Core Transform-PXXml function
 ├── xproc.ps1           # XProc processor wrappers (XML Calabash, Morgana)
 ├── xslt.ps1            # XSLT processor wrappers (.NET, MSXML, Altova, xsltproc)
 ├── utilities.ps1       # MIME parsing, type conversion, helpers
@@ -180,6 +219,7 @@ Invoke-Pester ./utilities.tests.ps1
 ## See Also
 
 - [USAGE.md](USAGE.md) – Additional usage examples
+- [PROCESSORS.md](PROCESSORS.md) – Processor access methods and evaluation of candidate processors
 - [XProc 3.0 Specification](https://spec.xproc.org/3.0/xproc/)
 - [XSLT 1.0 Specification](https://www.w3.org/TR/xslt-10/)
 

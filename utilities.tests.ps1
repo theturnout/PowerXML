@@ -7,10 +7,10 @@ Remove-Module powerxml -ErrorAction SilentlyContinue
 Import-Module "$PSScriptRoot/powerxml.psm1" -Force
 
 # Confirm function is loaded
-if (-not (Get-Command Parse-MimeMultipart -ErrorAction SilentlyContinue)) {
-    throw "Parse-MimeMultipart function not loaded from PowerXML module"
+if (-not (Get-Command Parse-PXMimeMultipart -ErrorAction SilentlyContinue)) {
+    throw "Parse-PXMimeMultipart function not loaded from PowerXML module"
 }
-Describe "Parse-MimeMultipart" {
+Describe "Parse-PXMimeMultipart" {
     It "parses a simple multipart message with two parts" {
         $boundary = "myboundary"
         $mime = @"
@@ -24,7 +24,7 @@ Content-Type: text/html
 <html><body>Hi</body></html>
 --myboundary--
 "@
-        $result = Parse-MimeMultipart -MimeString $mime -Boundary $boundary
+        $result = Parse-PXMimeMultipart -MimeString $mime -Boundary $boundary
         $result.Count | Should -Be 2
         $result[0].Headers["Content-Type"] | Should -Be "text/plain"
         $result[0].Content | Should -Be "Hello World"
@@ -40,7 +40,7 @@ Content-Type: text/html
 Just content
 --b--
 "@
-        $result = @(Parse-MimeMultipart -MimeString $mime -Boundary $boundary)
+        $result = @(Parse-PXMimeMultipart -MimeString $mime -Boundary $boundary)
         $result.Count | Should -Be 1
         $result[0].Headers.Count | Should -Be 0
         $result[0].Content | Should -Be "Just content"
@@ -56,7 +56,7 @@ X-Custom:  value
 {"foo": "bar"}
 --test--
 "@
-        $result = @(Parse-MimeMultipart -MimeString $mime -Boundary $boundary)
+        $result = @(Parse-PXMimeMultipart -MimeString $mime -Boundary $boundary)
         $result.Count | Should -Be 1
         $result[0].Headers["Content-Type"] | Should -Be "application/json"
         $result[0].Headers["X-Custom"] | Should -Be "value"
@@ -64,13 +64,13 @@ X-Custom:  value
     }
 }
 
-Describe "ConvertTo-NativeType" {
+Describe "ConvertTo-PXNativeType" {
     It "converts application/xml to XmlDocument" {
         $part = @{
             Headers = @{ "Content-Type" = "application/xml; charset=UTF-8" }
             Content = "<doc>Dotless i: ı.</doc>"
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [System.Xml.XmlDocument]
         $result.DocumentElement.Name | Should -Be "doc"
         $result.DocumentElement.InnerText | Should -Be "Dotless i: ı."
@@ -81,7 +81,7 @@ Describe "ConvertTo-NativeType" {
             Headers = @{ "Content-Type" = "text/xml" }
             Content = "<root><child>value</child></root>"
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [System.Xml.XmlDocument]
         $result.SelectSingleNode("//child").InnerText | Should -Be "value"
     }
@@ -91,7 +91,7 @@ Describe "ConvertTo-NativeType" {
             Headers = @{ "Content-Type" = "application/json; charset=UTF-8" }
             Content = '{"cat":"😸"}'
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [PSCustomObject]
         $result.cat | Should -Be "😸"
     }
@@ -101,7 +101,7 @@ Describe "ConvertTo-NativeType" {
             Headers = @{ "Content-Type" = "text/plain; charset=UTF-8" }
             Content = "Dotless i: ı."
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [string]
         $result | Should -Be "Dotless i: ı."
     }
@@ -111,7 +111,7 @@ Describe "ConvertTo-NativeType" {
             Headers = @{ "Content-Type" = "text/html" }
             Content = "<html><body>Hello</body></html>"
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [string]
         $result | Should -Be "<html><body>Hello</body></html>"
     }
@@ -125,7 +125,7 @@ Describe "ConvertTo-NativeType" {
             }
             Content = "SGVsbG8gV29ybGQ="  # Base64 for "Hello World"
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [PowerXML.MimeContent]
         $result.ContentType | Should -Be "application/octet-stream"
         $result.ContentDisposition | Should -Be "attachment"
@@ -139,7 +139,7 @@ Describe "ConvertTo-NativeType" {
             Headers = @{ "Content-Type" = "application/x-custom-type" }
             Content = "custom data"
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [PowerXML.MimeContent]
         $result.ContentType | Should -Be "application/x-custom-type"
         $result.RawContent | Should -Be "custom data"
@@ -150,7 +150,7 @@ Describe "ConvertTo-NativeType" {
             Headers = @{}
             Content = "No content type"
         }
-        $result = ConvertTo-NativeType -MimePart $part
+        $result = ConvertTo-PXNativeType -MimePart $part
         $result | Should -BeOfType [PowerXML.MimeContent]
         $result.ContentType | Should -BeNullOrEmpty
         $result.RawContent | Should -Be "No content type"
@@ -181,19 +181,19 @@ Dotless i: ı.
 
 --B52044cd8-6960-4acf-98ab-81d69f2aa824:91c0a06a-2398-4e55-ac68-797f0e1cf3b4--
 "@
-        $parts = Parse-MimeMultipart -MimeString $mime -Boundary $boundary
+        $parts = Parse-PXMimeMultipart -MimeString $mime -Boundary $boundary
         $parts.Count | Should -Be 3
 
         # Convert each part
-        $xmlResult = ConvertTo-NativeType -MimePart $parts[0]
+        $xmlResult = ConvertTo-PXNativeType -MimePart $parts[0]
         $xmlResult | Should -BeOfType [System.Xml.XmlDocument]
         $xmlResult.DocumentElement.InnerText | Should -Be "Dotless i: ı."
 
-        $jsonResult = ConvertTo-NativeType -MimePart $parts[1]
+        $jsonResult = ConvertTo-PXNativeType -MimePart $parts[1]
         $jsonResult | Should -BeOfType [PSCustomObject]
         $jsonResult.cat | Should -Be "😸"
 
-        $textResult = ConvertTo-NativeType -MimePart $parts[2]
+        $textResult = ConvertTo-PXNativeType -MimePart $parts[2]
         $textResult | Should -BeOfType [string]
         $textResult | Should -Be "Dotless i: ı."
     }
@@ -203,7 +203,7 @@ Dotless i: ı.
             @{ Headers = @{ "Content-Type" = "text/plain" }; Content = "text1" },
             @{ Headers = @{ "Content-Type" = "application/json" }; Content = '{"a":1}' }
         )
-        $results = $parts | ConvertTo-NativeType
+        $results = $parts | ConvertTo-PXNativeType
         $results.Count | Should -Be 2
         $results[0] | Should -Be "text1"
         $results[1].a | Should -Be 1
@@ -211,7 +211,118 @@ Dotless i: ı.
 }
 
 # MIME Torture Test Suite based on Ryan Finnie's MIME Torture Test v1.0
-Describe "MIME Torture Test - Parse-MimeMultipart" {
+Describe "ConvertTo-PXMimeMultipart" {
+    It "Should round-trip through Parse-PXMimeMultipart" {
+        $message = ConvertTo-PXMimeMultipart -Parts @(
+            @{ Port = "source"; Content = "<a>1</a>" },
+            @{ Port = "stylesheet"; Content = ([xml]"<b>2</b>") }
+        )
+        $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts.Count | Should -Be 2
+        $parts[0].Headers["X-Port"] | Should -Be "source"
+        $parts[0].Headers["Content-Type"] | Should -Be "application/xml"
+        $parts[0].Content | Should -Be "<a>1</a>"
+        $parts[1].Headers["X-Port"] | Should -Be "stylesheet"
+        $parts[1].Headers["Content-Type"] | Should -Be "application/xml"
+        $parts[1].Content | Should -Be "<b>2</b>"
+    }
+
+    It "Should determine XML media types without changing content: <Label>" -ForEach @(
+        @{ Label = 'XML declaration'; Content = '<?xml version="1.0"?><root/>'; ContentType = $null; Expected = 'application/xml' }
+        @{ Label = 'XML without declaration'; Content = '  <root xmlns="urn:test">value</root>  '; ContentType = $null; Expected = 'application/xml' }
+        @{ Label = 'plain text'; Content = 'Hello, World!'; ContentType = $null; Expected = 'text/plain' }
+        @{ Label = 'malformed XML'; Content = '<root>'; ContentType = $null; Expected = 'text/plain' }
+        @{ Label = 'explicit text type'; Content = '<root/>'; ContentType = 'text/plain'; Expected = 'text/plain' }
+        @{ Label = 'explicit XML type'; Content = '<root/>'; ContentType = 'text/xml; charset=UTF-8'; Expected = 'text/xml; charset=UTF-8' }
+        @{ Label = 'prohibited DTD'; Content = '<!DOCTYPE root [<!ENTITY value "expanded">]><root>&value;</root>'; ContentType = $null; Expected = 'text/plain' }
+    ) {
+        $message = ConvertTo-PXMimeMultipart -Parts @(
+            @{ Port = 'result'; Content = $Content; ContentType = $ContentType }
+        )
+        $boundary = (($message -split "`n")[0].Trim()).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+        $parts[0].Headers['Content-Type'] | Should -Be $Expected
+        $parts[0].Content | Should -Be $Content.Trim()
+        if ($Expected -eq 'application/xml') {
+            $native = ConvertTo-PXNativeType -MimePart $parts[0]
+            $native | Should -BeOfType [System.Xml.XmlDocument]
+            $native.DocumentElement.LocalName | Should -Be 'root'
+        }
+    }
+
+    It "Should serialize native JSON values: <Label>" -ForEach @(
+        @{ Label = 'object'; Json = '{"cat":"😸","nested":{"items":[1,true,{"value":"kept"}]}}' }
+        @{ Label = 'array'; Json = '[{"value":1},{"value":2}]' }
+        @{ Label = 'boolean'; Json = 'true' }
+        @{ Label = 'number'; Json = '42' }
+    ) {
+        $native = ConvertTo-PXNativeType -MimePart @{
+            Headers = @{ 'Content-Type' = 'application/json' }
+            Content = $Json
+        }
+        $message = ConvertTo-PXMimeMultipart -Parts @(@{ Port = 'result'; Content = $native })
+        $boundary = (($message -split "`n")[0]).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts[0].Headers['Content-Type'] | Should -Be 'application/json'
+        $parts[0].Content | Should -Be $Json
+        $parts[0].Headers['X-Port'] | Should -Be 'result'
+    }
+
+    It "Should preserve MIME wrapper payloads and headers: <Label>" -ForEach @(
+        @{ Label = 'binary'; ContentType = 'application/octet-stream'; Encoding = 'base64'; Content = 'AAEC/w==' }
+        @{ Label = 'custom'; ContentType = 'application/x-custom; charset=UTF-8'; Encoding = '8bit'; Content = 'custom data ı' }
+        @{ Label = 'empty'; ContentType = 'application/x-custom'; Encoding = $null; Content = '' }
+    ) {
+        $headers = @{ 'Content-Type' = $ContentType }
+        if ($Encoding) { $headers['Content-Transfer-Encoding'] = $Encoding }
+        $native = ConvertTo-PXNativeType -MimePart @{ Headers = $headers; Content = $Content }
+        $message = ConvertTo-PXMimeMultipart -Parts @(@{ Port = 'binary'; Content = $native })
+        $boundary = (($message -split "`n")[0]).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts[0].Headers['Content-Type'] | Should -Be $ContentType
+        $parts[0].Headers['Content-Transfer-Encoding'] | Should -Be $Encoding
+        $parts[0].Headers['X-Port'] | Should -Be 'binary'
+        $parts[0].Content | Should -Be $Content
+        $roundTrip = ConvertTo-PXNativeType -MimePart $parts[0]
+        [Convert]::ToBase64String($roundTrip.BinaryContent) | Should -Be ([Convert]::ToBase64String($native.BinaryContent))
+    }
+
+    It "Should base64 encode a MIME wrapper with only binary content" {
+        $native = [PowerXML.MimeContent]::new()
+        $native.ContentType = 'image/png'
+        $native.BinaryContent = [byte[]]@(0, 1, 2, 255)
+        $message = ConvertTo-PXMimeMultipart -Parts @(@{ Port = 'result'; Content = $native })
+        $boundary = (($message -split "`n")[0]).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+
+        $parts[0].Headers['Content-Type'] | Should -Be 'image/png'
+        $parts[0].Headers['Content-Transfer-Encoding'] | Should -Be 'base64'
+        $parts[0].Content | Should -Be 'AAEC/w=='
+        $roundTrip = ConvertTo-PXNativeType -MimePart $parts[0]
+        [Convert]::ToBase64String($roundTrip.BinaryContent) | Should -Be 'AAEC/w=='
+    }
+
+    It "Should write to a file when -Path is given" {
+        $mimePath = Join-Path $TestDrive "written.mime"
+        $returned = ConvertTo-PXMimeMultipart -Path $mimePath -Parts @(
+            @{ Port = "result"; Content = "<r>text</r>" }
+        )
+
+        $returned | Should -Be $mimePath
+        Test-Path $mimePath | Should -Be $true
+        $message = Get-Content -Path $mimePath -Raw
+        $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
+        $parts = @(Parse-PXMimeMultipart -MimeString $message -Boundary $boundary)
+        $parts[0].Headers["X-Port"] | Should -Be "result"
+        $parts[0].Content | Should -Be "<r>text</r>"
+    }
+}
+
+Describe "MIME Torture Test - Parse-PXMimeMultipart" {
     BeforeAll {
         $script:tortureTestPath = "$PSScriptRoot/test_data/rf-mime-torture-test-1.0.mbox.txt"
         $script:tortureTestContent = Get-Content $tortureTestPath -Raw
@@ -219,13 +330,13 @@ Describe "MIME Torture Test - Parse-MimeMultipart" {
     }
 
     It "parses boundary with special characters (=-prefix)" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         $parts | Should -Not -BeNullOrEmpty
         $parts.Count | Should -Be 11
     }
 
     It "correctly identifies Content-Type for all top-level parts" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         
         # Part 0: text/plain intro
         $parts[0].Headers['Content-Type'] | Should -BeLike 'text/plain*'
@@ -237,7 +348,7 @@ Describe "MIME Torture Test - Parse-MimeMultipart" {
     }
 
     It "parses Content-Disposition header" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         
         # All parts have Content-Disposition: inline
         for ($i = 1; $i -lt $parts.Count; $i++) {
@@ -246,28 +357,28 @@ Describe "MIME Torture Test - Parse-MimeMultipart" {
     }
 
     It "parses Content-Description header" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         
         # Part 1 has Futurama quote
         $parts[1].Headers['Content-Description'] | Should -Be "I'll be whatever I wanna do. --Fry"
     }
 
     It "handles folded (multi-line) headers" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         
         # Part 9 has a folded Content-Description header
         $parts[9].Headers['Content-Description'] | Should -BeLike '*spirit is willing*bruised*Zapp*'
     }
 
     It "preserves content of text/plain intro part" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         
         $parts[0].Content | Should -BeLike '*Welcome to Ryan Finnie*MIME torture test*'
         $parts[0].Content | Should -BeLike '*Futurama quotes*'
     }
 
     It "preserves message/rfc822 content with nested headers" {
-        $parts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $parts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
         
         # Part 1 contains a nested message - should have Subject header in content
         $parts[1].Content | Should -BeLike '*Subject: plain jane message*'
@@ -280,7 +391,7 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
         $script:tortureTestPath = "$PSScriptRoot/test_data/rf-mime-torture-test-1.0.mbox.txt"
         $script:tortureTestContent = Get-Content $tortureTestPath -Raw
         $script:mainBoundary = "=-qYxqvD9rbH0PNeExagh1"
-        $script:topLevelParts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $script:topLevelParts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
     }
 
     It "parses nested multipart/mixed (3 layers deep)" {
@@ -292,7 +403,7 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
         
         # Parse the nested content (skip the rfc822 headers first)
         $nestedBoundary = "=-9Brg7LoMERBrIDtMRose"
-        $nestedParts = Parse-MimeMultipart -MimeString $part2Content -Boundary $nestedBoundary
+        $nestedParts = Parse-PXMimeMultipart -MimeString $part2Content -Boundary $nestedBoundary
         
         $nestedParts.Count | Should -Be 2
         $nestedParts[0].Headers['Content-Type'] | Should -BeLike 'text/plain*'
@@ -301,14 +412,14 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
 
     It "parses deeply nested message (the original message - 3rd layer)" {
         $part2Content = $topLevelParts[2].Content
-        $nestedParts = Parse-MimeMultipart -MimeString $part2Content -Boundary "=-9Brg7LoMERBrIDtMRose"
+        $nestedParts = Parse-PXMimeMultipart -MimeString $part2Content -Boundary "=-9Brg7LoMERBrIDtMRose"
         
         # The second nested part contains another message/rfc822
         $deeperContent = $nestedParts[1].Content
         $deeperContent | Should -BeLike '*boundary="=-XFYecI7w+0shpolXq8bb"*'
         
         # Parse the deepest layer
-        $deepestParts = Parse-MimeMultipart -MimeString $deeperContent -Boundary "=-XFYecI7w+0shpolXq8bb"
+        $deepestParts = Parse-PXMimeMultipart -MimeString $deeperContent -Boundary "=-XFYecI7w+0shpolXq8bb"
         
         $deepestParts.Count | Should -Be 2
         $deepestParts[0].Content | Should -BeLike '*3rd layer deep*'
@@ -317,9 +428,9 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
 
     It "handles base64 encoded attachments" {
         $part2Content = $topLevelParts[2].Content
-        $nestedParts = Parse-MimeMultipart -MimeString $part2Content -Boundary "=-9Brg7LoMERBrIDtMRose"
+        $nestedParts = Parse-PXMimeMultipart -MimeString $part2Content -Boundary "=-9Brg7LoMERBrIDtMRose"
         $deeperContent = $nestedParts[1].Content
-        $deepestParts = Parse-MimeMultipart -MimeString $deeperContent -Boundary "=-XFYecI7w+0shpolXq8bb"
+        $deepestParts = Parse-PXMimeMultipart -MimeString $deeperContent -Boundary "=-XFYecI7w+0shpolXq8bb"
         
         # The attachment is base64 encoded gzip
         $deepestParts[1].Headers['Content-Transfer-Encoding'] | Should -Be 'base64'
@@ -332,7 +443,7 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
         $part6Content = $topLevelParts[6].Content
         $part6Content | Should -BeLike '*boundary="=-ZCKMfHzvHMyK1iBu4kff"*'
         
-        $nestedParts = Parse-MimeMultipart -MimeString $part6Content -Boundary "=-ZCKMfHzvHMyK1iBu4kff"
+        $nestedParts = Parse-PXMimeMultipart -MimeString $part6Content -Boundary "=-ZCKMfHzvHMyK1iBu4kff"
         
         $nestedParts.Count | Should -Be 2
         $nestedParts[0].Headers['Content-Type'] | Should -BeLike 'text/html*'
@@ -346,7 +457,7 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
         $part9Content = $topLevelParts[9].Content
         $part9Content | Should -BeLike '*multipart/signed*boundary="=-vH3FQO9a8icUn1ROCoAi"*'
         
-        $signedParts = Parse-MimeMultipart -MimeString $part9Content -Boundary "=-vH3FQO9a8icUn1ROCoAi"
+        $signedParts = Parse-PXMimeMultipart -MimeString $part9Content -Boundary "=-vH3FQO9a8icUn1ROCoAi"
         
         $signedParts.Count | Should -Be 2
         $signedParts[0].Headers['Content-Type'] | Should -BeLike 'multipart/mixed*'
@@ -355,7 +466,7 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
 
     It "handles PGP signature content" {
         $part9Content = $topLevelParts[9].Content
-        $signedParts = Parse-MimeMultipart -MimeString $part9Content -Boundary "=-vH3FQO9a8icUn1ROCoAi"
+        $signedParts = Parse-PXMimeMultipart -MimeString $part9Content -Boundary "=-vH3FQO9a8icUn1ROCoAi"
         
         $signedParts[1].Content | Should -BeLike '*-----BEGIN PGP SIGNATURE-----*'
         $signedParts[1].Content | Should -BeLike '*-----END PGP SIGNATURE-----*'
@@ -366,14 +477,14 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
         $part10Content = $topLevelParts[10].Content
         $part10Content | Should -BeLike '*boundary="=-tyGlQ9JvB5uvPWzozI+y"*'
         
-        $altParts = Parse-MimeMultipart -MimeString $part10Content -Boundary "=-tyGlQ9JvB5uvPWzozI+y"
+        $altParts = Parse-PXMimeMultipart -MimeString $part10Content -Boundary "=-tyGlQ9JvB5uvPWzozI+y"
         
         $altParts.Count | Should -Be 2
         $altParts[0].Headers['Content-Type'] | Should -BeLike 'text/plain*'
         $altParts[1].Headers['Content-Type'] | Should -BeLike 'multipart/related*'
         
         # Parse the related part
-        $relatedParts = Parse-MimeMultipart -MimeString $altParts[1].Content -Boundary "=-bFkxH1S3HVGcxi+o/5jG"
+        $relatedParts = Parse-PXMimeMultipart -MimeString $altParts[1].Content -Boundary "=-bFkxH1S3HVGcxi+o/5jG"
         
         $relatedParts.Count | Should -Be 2
         $relatedParts[0].Headers['Content-Type'] | Should -BeLike 'text/html*'
@@ -382,22 +493,22 @@ Describe "MIME Torture Test - Nested Multipart Parsing" {
     }
 }
 
-Describe "MIME Torture Test - ConvertTo-NativeType" {
+Describe "MIME Torture Test - ConvertTo-PXNativeType" {
     BeforeAll {
         $script:tortureTestPath = "$PSScriptRoot/test_data/rf-mime-torture-test-1.0.mbox.txt"
         $script:tortureTestContent = Get-Content $tortureTestPath -Raw
         $script:mainBoundary = "=-qYxqvD9rbH0PNeExagh1"
-        $script:topLevelParts = Parse-MimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
+        $script:topLevelParts = Parse-PXMimeMultipart -MimeString $tortureTestContent -Boundary $mainBoundary
     }
 
     It "converts text/plain intro to string" {
-        $result = ConvertTo-NativeType -MimePart $topLevelParts[0]
+        $result = ConvertTo-PXNativeType -MimePart $topLevelParts[0]
         $result | Should -BeOfType [string]
         $result | Should -BeLike '*Welcome to Ryan Finnie*'
     }
 
     It "wraps message/rfc822 in MimeContent" {
-        $result = ConvertTo-NativeType -MimePart $topLevelParts[1]
+        $result = ConvertTo-PXNativeType -MimePart $topLevelParts[1]
         $result | Should -BeOfType [PowerXML.MimeContent]
         $result.ContentType | Should -Be 'message/rfc822'
         $result.RawContent | Should -BeLike '*Subject: plain jane message*'
@@ -406,9 +517,9 @@ Describe "MIME Torture Test - ConvertTo-NativeType" {
     It "converts nested HTML content to string" {
         # Get HTML from part 6
         $part6Content = $topLevelParts[6].Content
-        $nestedParts = Parse-MimeMultipart -MimeString $part6Content -Boundary "=-ZCKMfHzvHMyK1iBu4kff"
+        $nestedParts = Parse-PXMimeMultipart -MimeString $part6Content -Boundary "=-ZCKMfHzvHMyK1iBu4kff"
         
-        $htmlResult = ConvertTo-NativeType -MimePart $nestedParts[0]
+        $htmlResult = ConvertTo-PXNativeType -MimePart $nestedParts[0]
         $htmlResult | Should -BeOfType [string]
         $htmlResult | Should -BeLike '*<!DOCTYPE HTML*'
     }
@@ -416,10 +527,10 @@ Describe "MIME Torture Test - ConvertTo-NativeType" {
     It "wraps binary image/gif in MimeContent with base64 decoded content" {
         # Get GIF from part 10's nested related part
         $part10Content = $topLevelParts[10].Content
-        $altParts = Parse-MimeMultipart -MimeString $part10Content -Boundary "=-tyGlQ9JvB5uvPWzozI+y"
-        $relatedParts = Parse-MimeMultipart -MimeString $altParts[1].Content -Boundary "=-bFkxH1S3HVGcxi+o/5jG"
+        $altParts = Parse-PXMimeMultipart -MimeString $part10Content -Boundary "=-tyGlQ9JvB5uvPWzozI+y"
+        $relatedParts = Parse-PXMimeMultipart -MimeString $altParts[1].Content -Boundary "=-bFkxH1S3HVGcxi+o/5jG"
         
-        $gifResult = ConvertTo-NativeType -MimePart $relatedParts[1]
+        $gifResult = ConvertTo-PXNativeType -MimePart $relatedParts[1]
         $gifResult | Should -BeOfType [PowerXML.MimeContent]
         $gifResult.ContentType | Should -Be 'image/gif'
         # GIF magic number: 47 49 46 ("GIF")
@@ -428,16 +539,16 @@ Describe "MIME Torture Test - ConvertTo-NativeType" {
 
     It "wraps application/pgp-signature in MimeContent" {
         $part9Content = $topLevelParts[9].Content
-        $signedParts = Parse-MimeMultipart -MimeString $part9Content -Boundary "=-vH3FQO9a8icUn1ROCoAi"
+        $signedParts = Parse-PXMimeMultipart -MimeString $part9Content -Boundary "=-vH3FQO9a8icUn1ROCoAi"
         
-        $sigResult = ConvertTo-NativeType -MimePart $signedParts[1]
+        $sigResult = ConvertTo-PXNativeType -MimePart $signedParts[1]
         $sigResult | Should -BeOfType [PowerXML.MimeContent]
         $sigResult.ContentType | Should -Be 'application/pgp-signature'
     }
 }
 
 Describe "Pipeline Integration" {
-    It "supports full pipeline: Parse-MimeMultipart | ConvertTo-NativeType | ForEach-Object" {
+    It "supports full pipeline: Parse-PXMimeMultipart | ConvertTo-PXNativeType | ForEach-Object" {
         $boundary = "testboundary"
         $mime = @"
 --testboundary
@@ -455,8 +566,8 @@ Plain text item
 --testboundary--
 "@
         # Full pipeline: parse -> convert -> transform
-        $results = Parse-MimeMultipart -MimeString $mime -Boundary $boundary |
-            ConvertTo-NativeType |
+        $results = Parse-PXMimeMultipart -MimeString $mime -Boundary $boundary |
+            ConvertTo-PXNativeType |
             ForEach-Object {
                 if ($_ -is [string]) {
                     @{ Type = 'Text'; Content = $_ }
@@ -498,8 +609,8 @@ Content-Type: application/xml
 --filterboundary--
 "@
         # Pipeline with filtering
-        $activeItems = Parse-MimeMultipart -MimeString $mime -Boundary $boundary |
-            ConvertTo-NativeType |
+        $activeItems = Parse-PXMimeMultipart -MimeString $mime -Boundary $boundary |
+            ConvertTo-PXNativeType |
             Where-Object { $_.SelectSingleNode('//status').InnerText -eq 'active' }
         
         $activeItems.Count | Should -Be 2
@@ -510,8 +621,8 @@ Content-Type: application/xml
         $boundary = "=-qYxqvD9rbH0PNeExagh1"
         
         # Get just the Content-Types using pipeline
-        $contentTypes = Parse-MimeMultipart -MimeString $content -Boundary $boundary |
-            Select-Object -ExpandProperty Headers |
+        $contentTypes = Parse-PXMimeMultipart -MimeString $content -Boundary $boundary |
+            ForEach-Object { $_.Headers } |
             ForEach-Object { $_['Content-Type'] }
         
         $contentTypes.Count | Should -Be 11

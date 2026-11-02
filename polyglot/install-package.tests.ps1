@@ -279,4 +279,186 @@ Describe 'Install-Package' {
             }
         }
     }
+
+    Context 'Archive root auto-detection' {
+        BeforeEach {
+            # Real wrapper-style archive: every entry lives under mywrapper-9.9.9/
+            $wrapperBase = Join-Path $TestDrive "wrapsrc-$(New-Guid)"
+            $wrapperDir = Join-Path $wrapperBase "mywrapper-9.9.9"
+            New-Item -ItemType Directory -Path $wrapperDir -Force | Out-Null
+            Set-Content -Path (Join-Path $wrapperDir "lib.jar") -Value "jar content" -NoNewline
+            $script:wrapperZip = Join-Path $script:LocalRepo "mylib-9.9.9.zip"
+            Compress-Archive -Path (Join-Path $wrapperBase "*") -DestinationPath $script:wrapperZip -Force
+
+            # Real flat archive: entries at the archive root (no wrapper)
+            $script:flatBase = Join-Path $TestDrive "flatsrc-$(New-Guid)"
+            New-Item -ItemType Directory -Path $script:flatBase -Force | Out-Null
+            Set-Content -Path (Join-Path $script:flatBase "root-file.txt") -Value "root" -NoNewline
+            $flatSub = Join-Path $script:flatBase "sub"
+            New-Item -ItemType Directory -Path $flatSub -Force | Out-Null
+            Set-Content -Path (Join-Path $flatSub "nested-file.txt") -Value "nested" -NoNewline
+            $script:flatZip = Join-Path $script:LocalRepo "mylib-8.8.8.zip"
+            Compress-Archive -Path (Join-Path $script:flatBase "*") -DestinationPath $script:flatZip -Force
+        }
+
+        It 'Should auto-detect and rename a wrapper directory without ZipRoot' {
+            $result = Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mylib" -Version "9.9.9" `
+                -LocalRepository $script:LocalRepo
+
+            $expected = Join-Path $script:LocalRepo "mylib-9.9.9"
+            $result | Should -Be $expected
+            Test-Path $expected -PathType Container | Should -Be $true
+            Test-Path (Join-Path $expected "lib.jar") | Should -Be $true
+            Test-Path (Join-Path $script:LocalRepo "mywrapper-9.9.9") | Should -Be $false
+        }
+
+        It 'Should extract a no-wrapper archive directly into the canonical directory' {
+            $result = Install-Package -DownloadedPath $script:flatZip `
+                -Name "mylib" -Version "8.8.8" `
+                -LocalRepository $script:LocalRepo
+
+            $expected = Join-Path $script:LocalRepo "mylib-8.8.8"
+            $result | Should -Be $expected
+            Test-Path (Join-Path $expected "root-file.txt") | Should -Be $true
+            Test-Path (Join-Path $expected "sub/nested-file.txt") | Should -Be $true
+            # Nothing sprayed into the repository root
+            Test-Path (Join-Path $script:LocalRepo "root-file.txt") | Should -Be $false
+        }
+
+        It 'Should preserve an installed package whose name matches the archive wrapper' {
+            $existingDir = Join-Path $script:LocalRepo "mywrapper-9.9.9"
+            New-Item -ItemType Directory -Path $existingDir | Out-Null
+            Set-Content -Path (Join-Path $existingDir "lib.jar") -Value "original jar" -NoNewline
+            Set-Content -Path (Join-Path $existingDir "existing.txt") -Value "existing" -NoNewline
+
+            $result = Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mylib" -Version "9.9.9" `
+                -LocalRepository $script:LocalRepo
+
+            Get-Content (Join-Path $existingDir "lib.jar") -Raw | Should -Be "original jar"
+            Get-Content (Join-Path $existingDir "existing.txt") -Raw | Should -Be "existing"
+            Get-Content (Join-Path $result "lib.jar") -Raw | Should -Be "jar content"
+            Test-Path (Join-Path $result "existing.txt") | Should -Be $false
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 2
+        }
+
+        It 'Should clean up staging when wrapper extraction fails' {
+            Mock Expand-Archive -ModuleName polyglot -MockWith {
+                Set-Content -Path (Join-Path $DestinationPath "partial.txt") -Value "partial"
+                throw "Extraction failed"
+            }
+
+            { Install-Package -DownloadedPath $script:wrapperZip `
+                    -Name "mylib" -Version "9.9.9" `
+                    -LocalRepository $script:LocalRepo } | Should -Throw "*Extraction failed*"
+
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 0
+            Test-Path $script:wrapperZip | Should -Be $true
+        }
+
+        It 'Should install a wrapper that already has the canonical name' {
+            $result = Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mywrapper" -Version "9.9.9" `
+                -LocalRepository $script:LocalRepo
+
+            Get-Content (Join-Path $result "lib.jar") -Raw | Should -Be "jar content"
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 1
+        }
+
+        It 'Should warn and use the detected root when ZipRoot disagrees' {
+            Install-Package -DownloadedPath $script:wrapperZip `
+                -Name "mylib" -Version "9.9.9" `
+                -ZipRoot "wrong-root-9.9.9" `
+                -LocalRepository $script:LocalRepo `
+                -WarningAction SilentlyContinue -WarningVariable warnings
+
+            $warnings | Should -Not -BeNullOrEmpty
+            ($warnings | Out-String) | Should -BeLike "*wrong-root-9.9.9*"
+            Test-Path (Join-Path $script:LocalRepo "mylib-9.9.9") -PathType Container | Should -Be $true
+        }
+
+        It 'Should warn when ZipRoot is set but the archive has no wrapper' {
+            Install-Package -DownloadedPath $script:flatZip `
+                -Name "mylib" -Version "8.8.8" `
+                -ZipRoot "some-wrapper" `
+                -LocalRepository $script:LocalRepo `
+                -WarningAction SilentlyContinue -WarningVariable warnings
+
+            $warnings | Should -Not -BeNullOrEmpty
+            Test-Path (Join-Path $script:LocalRepo "mylib-8.8.8") -PathType Container | Should -Be $true
+        }
+
+        It 'Should perform a case-only rename to the canonical name' {
+            $caseBase = Join-Path $TestDrive "casesrc-$(New-Guid)"
+            $caseDir = Join-Path $caseBase "MYLIB-7.7.7"
+            New-Item -ItemType Directory -Path $caseDir -Force | Out-Null
+            Set-Content -Path (Join-Path $caseDir "inner.txt") -Value "x" -NoNewline
+            $caseZip = Join-Path $script:LocalRepo "mylib-7.7.7.zip"
+            Compress-Archive -Path (Join-Path $caseBase "*") -DestinationPath $caseZip -Force
+
+            Install-Package -DownloadedPath $caseZip `
+                -Name "mylib" -Version "7.7.7" `
+                -LocalRepository $script:LocalRepo
+
+            (Get-ChildItem $script:LocalRepo -Directory |
+                Where-Object { $_.Name -ceq "mylib-7.7.7" }).Name | Should -Be "mylib-7.7.7"
+        }
+
+        It 'Should extract a <Layout> nupkg using a temporary zip and clean it up' -TestCases @(
+            @{ Layout = 'flat'; ArchiveVariable = 'flatZip'; Payload = 'root-file.txt'; Content = 'root' }
+            @{ Layout = 'wrapped'; ArchiveVariable = 'wrapperZip'; Payload = 'lib.jar'; Content = 'jar content' }
+        ) {
+            param($Layout, $ArchiveVariable, $Payload, $Content)
+
+            $nupkg = Join-Path $script:LocalRepo "mylib-6.6.6.nupkg"
+            Copy-Item -Path (Get-Variable -Name $ArchiveVariable -ValueOnly) -Destination $nupkg
+            $originalHash = (Get-FileHash $nupkg).Hash
+            $extraction = @{ Path = $null }
+            Mock Expand-Archive -ModuleName polyglot -MockWith {
+                param($Path, $DestinationPath)
+                $extraction.Path = $Path
+                if ([System.IO.Path]::GetExtension($Path) -ne '.zip') {
+                    throw 'Only .zip archives are supported'
+                }
+                Microsoft.PowerShell.Archive\Expand-Archive -Path $Path -DestinationPath $DestinationPath -Force -ErrorAction Stop
+            }
+
+            $result = Install-Package -DownloadedPath $nupkg `
+                -Name "mylib" -Version "6.6.6" `
+                -LocalRepository $script:LocalRepo
+
+            $result | Should -Be (Join-Path $script:LocalRepo "mylib-6.6.6")
+            Get-Content (Join-Path $result $Payload) -Raw | Should -Be $Content
+            $extraction.Path | Should -Not -BeNullOrEmpty
+            Test-Path -LiteralPath $extraction.Path | Should -Be $false
+            (Get-FileHash $nupkg).Hash | Should -Be $originalHash
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 1
+        }
+
+        It 'Should clean up the temporary zip when <Layout> nupkg extraction fails' -TestCases @(
+            @{ Layout = 'flat'; ArchiveVariable = 'flatZip' }
+            @{ Layout = 'wrapped'; ArchiveVariable = 'wrapperZip' }
+        ) {
+            param($Layout, $ArchiveVariable)
+
+            $nupkg = Join-Path $script:LocalRepo "mylib-6.6.6.nupkg"
+            Copy-Item -Path (Get-Variable -Name $ArchiveVariable -ValueOnly) -Destination $nupkg
+            $extraction = @{ Path = $null }
+            Mock Expand-Archive -ModuleName polyglot -MockWith {
+                param($Path)
+                $extraction.Path = $Path
+                throw 'Extraction failed'
+            }
+
+            { Install-Package -DownloadedPath $nupkg `
+                    -Name "mylib" -Version "6.6.6" `
+                    -LocalRepository $script:LocalRepo } | Should -Throw '*Extraction failed*'
+
+            $extraction.Path | Should -Not -BeNullOrEmpty
+            Test-Path -LiteralPath $extraction.Path | Should -Be $false
+            Test-Path -LiteralPath $nupkg | Should -Be $true
+            @(Get-ChildItem $script:LocalRepo -Directory).Count | Should -Be 0
+        }
+    }
 }

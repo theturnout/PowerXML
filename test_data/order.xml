@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<order id="ORD-001">
+    <item>
+        <name>Widget</name>
+        <quantity>5</quantity>
+        <price>10.50</price>
+    </item>
+    <item>
+        <name>Gadget</name>
+        <quantity>2</quantity>
+        <price>25.00</price>
+    </item>
+    <item>
+        <name>Gizmo</name>
+        <quantity>10</quantity>
+        <price>5.25</price>
+    </item>
+</order>

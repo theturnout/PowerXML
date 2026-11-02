@@ -6,7 +6,7 @@
     Accepts a string containing a MIME multipart message and a boundary string.
     Returns an array of hashtables with keys: Headers, Content.
 #>
-function Parse-MimeMultipart {
+function Parse-PXMimeMultipart {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -88,11 +88,110 @@ function Parse-MimeMultipart {
     }
     
     # Output each part individually for proper pipeline support
-    # This allows: Parse-MimeMultipart | ConvertTo-NativeType | ForEach-Object {...}
+    # This allows: Parse-PXMimeMultipart | ConvertTo-PXNativeType | ForEach-Object {...}
     foreach ($part in $parts) {
         Write-Output $part
     }
 }
+<#
+.SYNOPSIS
+    Builds a MIME multipart message from document parts.
+.DESCRIPTION
+    Produces the same multipart/mixed format that Parse-PXMimeMultipart reads:
+    a generated boundary, a Content-Type header per part, and an X-Port header
+    naming the port the part belongs to (so the message can be routed back to
+    ports as input). XML documents and XML strings use application/xml content
+    type. Native JSON objects are serialized as application/json; MIME wrappers
+    retain their payload, content type, and transfer encoding. Returns the message
+    as a string, or writes it to a file when -Path is given.
+.PARAMETER Parts
+    One or more objects with Port, Content, and optional ContentType properties.
+.PARAMETER Path
+    Optional file path to write the message to.
+.OUTPUTS
+    The multipart message string, or the file path when -Path is used.
+#>
+function ConvertTo-PXMimeMultipart {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Parts,
+        [string]$Path
+    )
+    $boundary = "PowerXML-$([guid]::NewGuid().ToString('N'))"
+    $lines = @()
+    foreach ($part in $Parts) {
+        $transferEncoding = $null
+        $contentType = "text/plain"
+        if ($part.Content -is [PowerXML.MimeContent]) {
+            $wrapper = $part.Content
+            $contentType = if ($wrapper.Headers['Content-Type']) { $wrapper.Headers['Content-Type'] } elseif ($wrapper.ContentType) { $wrapper.ContentType } else { "application/octet-stream" }
+            $transferEncoding = $wrapper.Headers['Content-Transfer-Encoding']
+            if ($null -ne $wrapper.RawContent) {
+                $content = $wrapper.RawContent
+            }
+            else {
+                $content = [Convert]::ToBase64String($wrapper.BinaryContent)
+                $transferEncoding = "base64"
+            }
+        }
+        elseif ($part.Content -is [System.Xml.XmlDocument]) {
+            $content = $part.Content.OuterXml
+            $contentType = "application/xml"
+        }
+        elseif ($part.Content -is [System.Management.Automation.PSCustomObject] -or
+                $part.Content -is [System.Collections.IDictionary] -or
+                $part.Content -is [array] -or $part.Content -is [System.ValueType]) {
+            $content = ConvertTo-Json -InputObject $part.Content -Depth 100 -Compress
+            $contentType = "application/json"
+        }
+        else {
+            $content = [string]$part.Content
+        }
+        if ($part.ContentType) {
+            $contentType = $part.ContentType
+        }
+        if (-not $part.ContentType -and $part.Content -is [string]) {
+            $reader = $null
+            try {
+                $settings = [System.Xml.XmlReaderSettings]::new()
+                $settings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+                $settings.XmlResolver = $null
+                $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($content), $settings)
+                $xml = [System.Xml.XmlDocument]::new()
+                $xml.XmlResolver = $null
+                $xml.Load($reader)
+                if ($xml.DocumentElement) {
+                    $contentType = "application/xml"
+                }
+            }
+            catch [System.Xml.XmlException] {
+                $contentType = "text/plain"
+            }
+            finally {
+                if ($reader) { $reader.Dispose() }
+            }
+        }
+        $lines += "--$boundary"
+        $lines += "Content-Type: $contentType"
+        if ($transferEncoding) {
+            $lines += "Content-Transfer-Encoding: $transferEncoding"
+        }
+        if ($part.Port) {
+            $lines += "X-Port: $($part.Port)"
+        }
+        $lines += ""
+        $lines += $content
+    }
+    $lines += "--$boundary--"
+    $message = $lines -join "`n"
+    if ($Path) {
+        Set-Content -Path $Path -Value $message -Encoding UTF8
+        return $Path
+    }
+    return $message
+}
+
 #region MimeContent Wrapper Class
 # Define a .NET class to wrap content when MIME type doesn't map to native types
 if (-not ('PowerXML.MimeContent' -as [type])) {
@@ -126,7 +225,7 @@ namespace PowerXML
 }
 #endregion
 
-#region ConvertTo-NativeType
+#region ConvertTo-PXNativeType
 <#
 .SYNOPSIS
     Attempts to convert MIME multipart content to native PowerShell/.NET types based on Content-Type.
@@ -138,11 +237,11 @@ namespace PowerXML
     - text/plain, text/html, text/* -> [string]
     - Unknown types are wrapped in a PowerXML.MimeContent object
 .PARAMETER MimePart
-    A hashtable containing Headers and Content keys, as returned by Parse-MimeMultipart.
+    A hashtable containing Headers and Content keys, as returned by Parse-PXMimeMultipart.
 .OUTPUTS
     The converted native type, or a PowerXML.MimeContent wrapper for unknown types.
 #>
-function ConvertTo-NativeType {
+function ConvertTo-PXNativeType {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
@@ -469,4 +568,3 @@ function ConvertTo-HashString {
     $stringAsStream.Position = 0
     return (Get-FileHash -InputStream $stringAsStream).Hash
 }
-
