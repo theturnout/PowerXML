@@ -60,3 +60,9 @@ jobs:
         with:
           name: ${{ env.MODULE_NAME }}-${{ github.ref_name }}
           path: out
+      - name: Publish PowerShell Module
+        uses: natescherer/publish-powershell-action@v1
+        with:
+          token: ${{ secrets.PSGALLERY }}
+          target: gallery
+          path: out
