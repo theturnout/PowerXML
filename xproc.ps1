@@ -606,23 +606,32 @@ function Invoke-XmlCalabash {
         $stdinString = if ($InputObject -is [string]) { $InputObject } else { $InputObject.OuterXml }
     }
 
-    if ($null -ne $stdinString) {
-        if ($MergeOutput) {
-            $output = $stdinString | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # Desktop wraps native stderr in ErrorRecords even when the process succeeds.
+        if ($PSVersionTable.PSEdition -eq "Desktop" -and $MergeOutput) {
+            $ErrorActionPreference = "Continue"
+        }
+        if ($null -ne $stdinString) {
+            if ($MergeOutput) {
+                $output = $stdinString | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            }
+            else {
+                $output = $stdinString | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
+            }
         }
         else {
-            $output = $stdinString | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
+            # Close stdin so a missing input cannot block waiting for the caller.
+            if ($MergeOutput) {
+                $output = $null | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            }
+            else {
+                $output = $null | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
+            }
         }
     }
-    else {
-        # this will break if someone is missing an inport and the processor 
-        # tried to bind it to stdin
-        if ($MergeOutput) {
-            $output = $null | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
-        }
-        else {
-            $output = $null | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
-        }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
     }
 
     # Surface processor failures: a non-zero exit code means the run failed (#29)
@@ -703,7 +712,7 @@ function Invoke-MorganaXProc {
         $cpDelimiter = if ($IsLinux -or $IsMacOS) { ":" } else { ";" }
         Get-ChildItem "$processorPath\MorganaXProc-IIIse_lib" -Filter *.jar |
             ForEach-Object {
-                $cp = "$cp$cpDelimiter$_"
+                $cp = "$cp$cpDelimiter$($_.FullName)"
             }
     }
         
@@ -817,7 +826,11 @@ function Invoke-MorganaXProc {
         $xcArgs += @("-input:source=`"$stdinTempFile`"")
     }
 
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
+        if ($PSVersionTable.PSEdition -eq "Desktop" -and $MergeOutput) {
+            $ErrorActionPreference = "Continue"
+        }
         if ($MergeOutput) {
             $output = & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
         }
@@ -825,6 +838,7 @@ function Invoke-MorganaXProc {
             $output = & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
         }
 
+        $ErrorActionPreference = $previousErrorActionPreference
         # Surface processor failures: a non-zero exit code means the run failed (#29)
         if ($LASTEXITCODE -ne 0) {
             $failureText = if ($output -is [array]) { $output -join "`n" } else { [string]$output }
@@ -832,6 +846,7 @@ function Invoke-MorganaXProc {
         }
     }
     finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         if ($generatedConfigPath -and (Test-Path $generatedConfigPath -PathType Leaf)) {
             Remove-Item -Path $generatedConfigPath -Force -ErrorAction SilentlyContinue
         }
@@ -880,7 +895,7 @@ function Get-PXClassPath {
             Get-ChildItem "$_" -Filter *.jar |
                 ForEach-Object {
                     Write-Verbose "Adding $($_.FullName) to classpath"
-                    $cp = "$cp$cpDelimiter$_"
+                    $cp = "$cp$cpDelimiter$($_.FullName)"
                 }
             }
             return $cp

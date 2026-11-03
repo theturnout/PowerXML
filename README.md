@@ -138,6 +138,8 @@ Generated XML inputs, processor configurations, and step wrappers use BOM-free U
 
 Calabash text output separators vary with temporary-path length. PowerXML recognizes short header padding and variable-width trailer lines when collecting document sequences.
 
+On Windows PowerShell 5.1, merged Java stderr is collected as diagnostic output rather than terminating a successful run. Processor failures are determined by the process exit code, and dependency classpaths use absolute JAR paths on every host.
+
 `Copy-GitHubRelease` uses `GITHUB_TOKEN`, when set, for release metadata requests to `https://api.github.com`. CI supplies its read-only Actions token to integration tests to avoid anonymous API rate limits. The token is not sent to asset downloads or custom API hosts. Download failures propagate as errors.
 
 ### Composition Registry

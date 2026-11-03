@@ -138,6 +138,19 @@ Content-Type: application/xml
         }
     }
 
+	Context "Dependency classpaths" {
+		It "Uses absolute paths for JARs outside the working directory" {
+			$dependencyDirectory = Join-Path -Path $TestDrive -ChildPath "dependency directory"
+			New-Item -Path $dependencyDirectory -ItemType Directory | Out-Null
+			$jarPath = Join-Path -Path $dependencyDirectory -ChildPath "dependency.jar"
+			Set-Content -LiteralPath $jarPath -Value "fixture"
+			$classPath = Get-PXClassPath -Paths @($dependencyDirectory)
+			$entries = @($classPath -split [regex]::Escape([string][System.IO.Path]::PathSeparator) | Where-Object { $_ })
+			$entries.Count | Should -Be 1
+			$entries[0] | Should -BeExactly (Get-Item -LiteralPath $jarPath).FullName
+		}
+	}
+
 	Describe "XProc option normalization" {
 		BeforeAll {
 			$importParams = @{

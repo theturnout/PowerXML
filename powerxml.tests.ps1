@@ -1288,6 +1288,32 @@ Describe 'Processor failure handling' {
         @{Name = "xmlcalabash" },
         @{Name = "morganaxproc" }
     ) {
+		It "$($_.Name) - Collects successful stderr under Stop and preserves the caller preference" {
+			$ErrorActionPreference = "Stop"
+			$transformParams = @{
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Processor = $_.Name
+				Pipeline = "$PSScriptRoot/test_data/helloWorld.xpl"
+				MergeOutput = $true
+			}
+			$result = Transform-PXXml @transformParams
+			$result | Should -BeLike "*Hello, World!*"
+			$ErrorActionPreference | Should -BeExactly "Stop"
+		}
+
+		It "$($_.Name) - Reports the process exit code under Stop and preserves the caller preference" {
+			$ErrorActionPreference = "Stop"
+			$transformParams = @{
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Processor = $_.Name
+				Pipeline = (Join-Path -Path $PSScriptRoot -ChildPath "test_data\option-values.xpl")
+				OptionExpressions = @{ value = "(" }
+				MergeOutput = $true
+			}
+			{ Transform-PXXml @transformParams } | Should -Throw "*failed with exit code*"
+			$ErrorActionPreference | Should -BeExactly "Stop"
+		}
+
         It "$($_.Name) - Should throw when the pipeline is invalid" {
             $badPipeline = Join-Path $TestDrive "bad-port.xpl"
             Set-Content -Path $badPipeline -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><p:declare-step xmlns:p=`"http://www.w3.org/ns/xproc`" name=`"pipeline`" version=`"3.0`"><p:identity><p:with-input port=`"nope`"/></p:identity></p:declare-step>"
@@ -1421,7 +1447,7 @@ Describe 'Namespace registry' {
     It 'Should be idempotent when re-registering the same URI' {
         Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
         { Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre" } | Should -Not -Throw
-        (Get-PXNamespace).Count | Should -Be 1
+        @(Get-PXNamespace).Count | Should -Be 1
     }
 
     It 'Should unregister namespaces and tolerate unknown prefixes' {
