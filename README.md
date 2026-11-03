@@ -244,6 +244,8 @@ The integration suite contains `powerxml.tests.ps1` and `polyglot.integration.te
 
 The [CI workflow](.github/workflows/ci.yml) runs both suites on Linux, macOS, Windows PowerShell Core, and Windows PowerShell 5.1 for pull requests and pushes to `develop`. Analyzer errors block the build; warnings are reported while existing debt is addressed. To run all validation without publishing, select **Actions > CI > Run workflow** and choose a branch or tag. Manual runs never publish.
 
+Linux unit jobs install `xsltproc` through apt. macOS unit jobs use the system executable when available, otherwise install Homebrew `libxslt` and add its keg-only `bin` directory to `PATH`. Both jobs verify executable discovery and version before testing, so missing xsltproc coverage fails provisioning instead of silently skipping the six backend tests. Windows retains optional xsltproc detection.
+
 The [Release workflow](.github/workflows/release.yml) runs only when a `v*.*.*` tag is pushed. It calls the same CI workflow against the tagged commit, then publishes the validated artifact only after all tests, the staged-module smoke test, and the required-validation check succeed. CI has read-only permissions and receives no publication secrets; write permissions and the `PSGALLERY` secret are used only by the publishing job.
 
 ### Configuring the merge gate

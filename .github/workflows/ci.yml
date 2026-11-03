@@ -41,6 +41,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Provision xsltproc for Unix unit tests
+        if: matrix.suite == 'Unit' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Linux)
+              sudo apt-get update
+              sudo apt-get install --yes --no-install-recommends xsltproc
+              ;;
+            macOS)
+              if ! command -v xsltproc >/dev/null 2>&1; then
+                brew install libxslt
+                xslt_bin="$(brew --prefix libxslt)/bin"
+                export PATH="$xslt_bin:$PATH"
+                printf '%s\n' "$xslt_bin" >> "$GITHUB_PATH"
+              fi
+              ;;
+            *)
+              echo "Unsupported xsltproc provisioning host: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
+          command -v xsltproc
+          xsltproc --version
+
       - name: Set up Java for processor integration tests
         if: matrix.suite == 'Integration'
         uses: actions/setup-java@v4
