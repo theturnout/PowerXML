@@ -138,6 +138,8 @@ Generated XML inputs, processor configurations, and step wrappers use BOM-free U
 
 Calabash text output separators vary with temporary-path length. PowerXML recognizes short header padding and variable-width trailer lines when collecting document sequences.
 
+`Copy-GitHubRelease` uses `GITHUB_TOKEN`, when set, for release metadata requests to `https://api.github.com`. CI supplies its read-only Actions token to integration tests to avoid anonymous API rate limits. The token is not sent to asset downloads or custom API hosts. Download failures propagate as errors.
+
 ### Composition Registry
 
 Session-scoped software compositions, used by `Transform-PXXml` when no `-PackageResolution` is given (explicit entries take precedence). Compositions resolve once and cache their paths:

@@ -123,6 +123,7 @@ jobs:
       - name: Run tests
         env:
           TEST_SUITE: ${{ matrix.suite }}
+          GITHUB_TOKEN: ${{ matrix.suite == 'Integration' && github.token || '' }}
         run: |
           $testParams = @{
               Suite = $env:TEST_SUITE

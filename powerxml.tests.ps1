@@ -661,12 +661,12 @@ Describe 'Direct step execution' {
     ) {
         It "$($_.Name) - Should run p:identity directly" {
             $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
-            $result | Should -BeLike "*ORD-001*"
+            ([xml]$result).order.id | Should -BeExactly "ORD-001"
         }
 
         It "$($_.Name) - Should run a step with a single-value InPort" {
             $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort "$PSScriptRoot/test_data/order.xml"
-            $result | Should -BeLike "*ORD-001*"
+            ([xml]$result).order.id | Should -BeExactly "ORD-001"
         }
 
         It "$($_.Name) - Should run p:xinclude directly" {
@@ -684,12 +684,13 @@ Describe 'Direct step execution' {
 
     It "xmlcalabash - Should run p:xslt directly with a stylesheet port" {
         $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = "$PSScriptRoot/test_data/order-total.xsl" }
-        $result | Should -BeLike "*order-summary*"
+        ([xml]$result).DocumentElement.Name | Should -BeExactly "order-summary"
+        ([xml]$result)."order-summary".id | Should -BeExactly "ORD-001"
     }
 
     It "xmlcalabash - Should default unprefixed step names to the p: namespace" {
         $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
-        $result | Should -BeLike "*ORD-001*"
+        ([xml]$result).order.id | Should -BeExactly "ORD-001"
     }
 
     It "Should throw when -Step is used with -Processing xslt" {
@@ -795,7 +796,7 @@ Describe 'Input resolution' {
         It "$($_.Name) - Should accept a file URI as InPort source" {
             $orderFileUri = "file:///" + (("$PSScriptRoot/test_data/order.xml") -replace "\\", "/")
             $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = $orderFileUri }
-            $result | Should -BeLike "*ORD-001*"
+            ([xml]$result).order.id | Should -BeExactly "ORD-001"
         }
 
         It "$($_.Name) - Should accept a file URI as Pipeline" {
@@ -1095,7 +1096,8 @@ Describe 'Multipart MIME' {
                 -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $script:RoutedXsl } `
                 -MultiplexOutput $mimeOut
 
-            $result | Should -BeLike "*routed*"
+            ([xml]$result).DocumentElement.Name | Should -BeExactly "routed"
+            ([xml]$result).routed | Should -BeExactly "ORD-001"
             Test-Path $mimeOut | Should -Be $true
             $message = Get-Content -Path $mimeOut -Raw
             $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
