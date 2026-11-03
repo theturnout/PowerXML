@@ -163,7 +163,16 @@ Describe "Test harness process exit codes" {
 		if ($TestName) {
 			$arguments += @("-TestName", $TestName)
 		}
-		$output = & $script:PowerShellExecutable @arguments 2>&1
+		$previousErrorActionPreference = $ErrorActionPreference
+		try {
+			# Windows PowerShell otherwise terminates on the failing child's expected stderr.
+			$ErrorActionPreference = "Continue"
+			$output = & $script:PowerShellExecutable @arguments 2>&1
+		}
+		finally {
+			$ErrorActionPreference = $previousErrorActionPreference
+		}
+		$ErrorActionPreference | Should -Be $previousErrorActionPreference
 		$LASTEXITCODE | Should -Be $ExpectedExitCode -Because ($output -join "`n")
 		Test-Path -LiteralPath (Join-Path -Path $reports -ChildPath "test-results.xml") | Should -BeTrue
 	}
