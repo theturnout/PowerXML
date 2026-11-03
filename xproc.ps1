@@ -128,7 +128,7 @@ function ConvertTo-PXXmlConfig {
     $lines += "</$Root>"
 
     $configPath = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xml")
-    Set-Content -Path $configPath -Value ($lines -join "`n") -Encoding UTF8
+    [System.IO.File]::WriteAllText($configPath, ($lines -join "`n"), [System.Text.UTF8Encoding]::new($false))
     return $configPath
 }
 
@@ -198,6 +198,8 @@ Resolved input port bindings (port name to value).
 Output port bindings (port name to path). When empty, a conventional primary result port is declared.
 .PARAMETER Options
 Option bindings declared on the wrapper and forwarded to the wrapped step.
+.PARAMETER OptionExpressions
+Explicit XPath option bindings, also declared and forwarded by the wrapper.
 .OUTPUTS
 The path to the generated temporary pipeline file.
 #>
@@ -209,7 +211,8 @@ function New-PXStepShell {
         [hashtable]$Namespaces,
         [hashtable]$InPort,
         [hashtable]$OutPort,
-        [hashtable]$Options
+        [hashtable]$Options,
+        [hashtable]$OptionExpressions
     )
     $xprocNamespace = "http://www.w3.org/ns/xproc"
     $stepPrefix, $stepLocal = $Step -split ":", 2
@@ -259,11 +262,13 @@ function New-PXStepShell {
 
     $optionLines = @()
     $withOptionLines = @()
-    if ($Options) {
-        foreach ($optionName in $Options.Keys) {
-            $escapedName = [System.Security.SecurityElement]::Escape([string]$optionName)
-            $optionLines += "    <p:option name=`"$escapedName`" required=`"true`"/>"
-            $withOptionLines += "        <p:with-option name=`"$escapedName`" select=`"`$$escapedName`"/>"
+    foreach ($bindings in @($Options, $OptionExpressions)) {
+        if ($bindings) {
+            foreach ($optionName in $bindings.Keys) {
+                $escapedName = [System.Security.SecurityElement]::Escape([string]$optionName)
+                $optionLines += "    <p:option name=`"$escapedName`" required=`"true`"/>"
+                $withOptionLines += "        <p:with-option name=`"$escapedName`" select=`"`$$escapedName`"/>"
+            }
         }
     }
 
@@ -278,7 +283,7 @@ function New-PXStepShell {
     $stepLines += "    </$stepPrefix`:$stepLocal>"
 
     $namespaceDecl = if ($stepPrefix -eq "p") { "" } else { " xmlns:$stepPrefix=`"$prefixUri`"" }
-    if ($Options -and $Namespaces) {
+    if (($Options -or $OptionExpressions) -and $Namespaces) {
         foreach ($prefix in $Namespaces.Keys) {
             if ($prefix -ne "p" -and $prefix -ne $stepPrefix) {
                 $uri = [System.Security.SecurityElement]::Escape([string]$Namespaces[$prefix])
@@ -297,9 +302,129 @@ function New-PXStepShell {
     $shellLines += "</p:declare-step>"
 
     $shellPath = [System.IO.Path]::ChangeExtension((New-TemporaryFile).FullName, ".xpl")
-    Set-Content -Path $shellPath -Value ($shellLines -join "`n") -Encoding UTF8
+    [System.IO.File]::WriteAllText($shellPath, ($shellLines -join "`n"), [System.Text.UTF8Encoding]::new($false))
     return $shellPath
 }
+<#
+.SYNOPSIS
+Converts a literal PowerShell option value to an XPath expression.
+#>
+function ConvertTo-PXXPathLiteral {
+	[CmdletBinding()]
+	param(
+		[Parameter(Mandatory = $true)]
+		[AllowNull()]
+		[AllowEmptyString()]
+		$Value
+	)
+
+	if ($Value -is [string]) {
+		# Java 17's Windows launcher can lose Unicode in native arguments.
+		if ($Value -match "[^\x00-\x7F]") {
+			$codePoints = @(
+				for ($index = 0; $index -lt $Value.Length; $index++) {
+					[char]::ConvertToUtf32($Value, $index)
+					if ([char]::IsHighSurrogate($Value[$index])) { $index++ }
+				}
+			)
+			return "codepoints-to-string(($($codePoints -join ',')))"
+		}
+		return "'" + $Value.Replace("'", "''") + "'"
+	}
+	if ($Value -is [bool]) {
+		if ($Value) { return "true()" }
+		return "false()"
+	}
+	if ($Value -is [byte] -or $Value -is [sbyte] -or
+		$Value -is [int16] -or $Value -is [uint16] -or
+		$Value -is [int32] -or $Value -is [uint32] -or
+		$Value -is [int64] -or $Value -is [uint64]) {
+		return [System.Convert]::ToString($Value, [System.Globalization.CultureInfo]::InvariantCulture)
+	}
+	if ($Value -is [decimal]) {
+		$lexicalValue = [System.Convert]::ToString($Value, [System.Globalization.CultureInfo]::InvariantCulture)
+		return "Q{http://www.w3.org/2001/XMLSchema}decimal('$lexicalValue')"
+	}
+	if ($Value -is [single] -or $Value -is [double]) {
+		$typeName = if ($Value -is [single]) { "float" } else { "double" }
+		$lexicalValue = [System.Xml.XmlConvert]::ToString($Value)
+		return "Q{http://www.w3.org/2001/XMLSchema}$typeName('$lexicalValue')"
+	}
+	$typeName = if ($null -eq $Value) { "null" } else { $Value.GetType().FullName }
+	throw "Unsupported literal XProc option type '$typeName'. Use strings, booleans, or numbers in -Options; use -OptionExpressions for XPath values such as sequences, maps, or ()."
+}
+
+function Get-PXXProcOptionBindings {
+	[CmdletBinding()]
+	param(
+		[hashtable]$Options,
+		[hashtable]$OptionExpressions,
+		[hashtable]$Namespace
+	)
+
+	$seenNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+	foreach ($isExpression in @($false, $true)) {
+		$bindings = if ($isExpression) { $OptionExpressions } else { $Options }
+		if ($null -eq $bindings) { continue }
+		foreach ($name in $bindings.Keys) {
+			if ($name -isnot [string] -or -not $name) {
+				throw "XProc option names must be nonempty QName or EQName strings."
+			}
+			$uri = ""
+			$localName = $name
+			if ($name -match "^Q\{([^}]*)\}(.+)$") {
+				$uri = $Matches[1]
+				$localName = $Matches[2]
+			}
+			elseif ($name.Contains(":")) {
+				$prefix, $localName = $name -split ":", 2
+				if ($Namespace -and $Namespace.ContainsKey($prefix)) {
+					$uri = $Namespace[$prefix]
+				}
+				elseif ($prefix -eq "p") {
+					$uri = "http://www.w3.org/ns/xproc"
+				}
+				else {
+					throw "Option namespace prefix '$prefix' is not bound. Register it with Register-PXNamespace or pass -Namespace."
+				}
+				[void][System.Xml.XmlConvert]::VerifyNCName($prefix)
+			}
+			[void][System.Xml.XmlConvert]::VerifyNCName($localName)
+			if (-not $seenNames.Add("Q{$uri}$localName")) {
+				throw "XProc option '$name' is specified more than once. Use either -Options or -OptionExpressions for each option, not both."
+			}
+			$value = $bindings[$name]
+			if ($isExpression) {
+				if ($value -isnot [string] -or $value -notmatch "\S") {
+					throw "XPath expression for option '$name' must be a nonempty string."
+				}
+				$expression = $value
+			}
+			else {
+				$expression = ConvertTo-PXXPathLiteral -Value $value
+			}
+			[pscustomobject]@{ Name = $name; Expression = $expression }
+		}
+	}
+}
+
+function ConvertTo-PXLegacyArgument {
+	[CmdletBinding()]
+	param(
+		[Parameter(Mandatory = $true)]
+		[string]$Argument
+	)
+
+	# Legacy native invocation needs literal quotes escaped separately from XPath quoting.
+	$escaped = $Argument -replace "(\\*)`"", "`$1`$1\`""
+	if ($PSVersionTable.PSEdition -eq "Desktop") {
+		# Desktop inserts its own enclosing quotes; supplying them twice can split arguments.
+		return $escaped
+	}
+	$escaped = $escaped -replace "(\\+)$", "`$1`$1"
+	return "`"$escaped`""
+}
+
 <#
 .SYNOPSIS
 Invokes the XmlCalabash processor with the specified parameters.
@@ -307,7 +432,11 @@ Invokes the XmlCalabash processor with the specified parameters.
 An array of paths to search for the XmlCalabash processor and its dependencies.
 .PARAMETER Step
 When specified, runs this step directly (run --step:QName) instead of the pipeline.
-#> 
+.PARAMETER Options
+Literal string, boolean, or numeric option values.
+.PARAMETER OptionExpressions
+Explicit XPath option expressions evaluated without a context item.
+#>
 function Invoke-XmlCalabash {
     [CmdletBinding()]
     param(
@@ -317,6 +446,7 @@ function Invoke-XmlCalabash {
         $Pipeline,        
         [string]$ClassPath,
         [hashtable]$Options,
+        [hashtable]$OptionExpressions,
         [hashtable]$InPort,
         [hashtable]$OutPort,
         [string]$Catalog,
@@ -404,12 +534,13 @@ function Invoke-XmlCalabash {
         $xcArgs += $Passthrough
     }
         
-    if ($Options) {
-        $xcOptions = @()
-        foreach ($enum in $Options.GetEnumerator()) {
-            $xcOptions += ("$($enum.Key)=$($enum.Value)")
-        }
-        $xcArgs += $xcOptions
+    $optionParams = @{
+        Options = $Options
+        OptionExpressions = $OptionExpressions
+        Namespace = $Namespace
+    }
+    foreach ($binding in @(Get-PXXProcOptionBindings @optionParams)) {
+        $xcArgs += ConvertTo-PXLegacyArgument -Argument "$($binding.Name)=?$($binding.Expression)"
     }
     if ($Namespace) {
         $nsArgs = @()
@@ -477,20 +608,20 @@ function Invoke-XmlCalabash {
 
     if ($null -ne $stdinString) {
         if ($MergeOutput) {
-            $output = $stdinString | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            $output = $stdinString | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
         }
         else {
-            $output = $stdinString | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
+            $output = $stdinString | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
     else {
         # this will break if someone is missing an inport and the processor 
         # tried to bind it to stdin
         if ($MergeOutput) {
-            $output = $null | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
+            $output = $null | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs 2>&1
         }
         else {
-            $output = $null | & java -cp "$cp" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
+            $output = $null | & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xmlcalabash.app.Main @xcArgs
         }
     }
 
@@ -534,6 +665,7 @@ function Invoke-MorganaXProc {
         [Parameter(Mandatory = $true)] 
         $Pipeline,        
         [hashtable]$Options,
+        [hashtable]$OptionExpressions,
         [hashtable]$InPort,
         [hashtable]$OutPort,
         [string]$Catalog,
@@ -641,12 +773,10 @@ function Invoke-MorganaXProc {
         $xcArgs += $Passthrough
     }
         
-    if ($Options) {
-        $xcOptions = @()
-        foreach ($enum in $Options.GetEnumerator()) {
-            $xcOptions += ("-option:$($enum.Key)=$($enum.Value)")
-        }
-        $xcArgs += $xcOptions
+    $optionParams = @{
+        Options = $Options
+        OptionExpressions = $OptionExpressions
+        Namespace = $Namespace
     }
     if ($Namespace) {
         $nsArgs = @()
@@ -654,6 +784,9 @@ function Invoke-MorganaXProc {
             $nsArgs += ("-namespace:$($enum.Key)=$($enum.Value)")
         }
         $xcArgs += $nsArgs
+    }
+    foreach ($binding in @(Get-PXXProcOptionBindings @optionParams)) {
+        $xcArgs += ConvertTo-PXLegacyArgument -Argument "-option:$($binding.Name)=?$($binding.Expression)"
     }
 
     # Handle CmdLet params
@@ -686,10 +819,10 @@ function Invoke-MorganaXProc {
 
     try {
         if ($MergeOutput) {
-            $output = & java -cp "$cp" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
+            $output = & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs 2>&1
         }
         else {
-            $output = & java -cp "$cp" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
+            $output = & java -cp "$cp" "-Dfile.encoding=UTF-8" @PassthroughJava com.xml_project.morganaxproc3.XProcEngine @xcArgs
         }
 
         # Surface processor failures: a non-zero exit code means the run failed (#29)

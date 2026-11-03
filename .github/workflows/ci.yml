@@ -1,74 +1,223 @@
 name: CI
 
 on:
+  pull_request:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - develop
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
-  build-test-package:
-    runs-on: ubuntu-latest
-
-    env:
-      MODULE_NAME: powerxml
-      MODULE_PATH: .
+  test:
+    name: ${{ matrix.suite }} / ${{ matrix.host.name }}
+    runs-on: ${{ matrix.host.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [Unit, Integration]
+        host:
+          - name: linux-core
+            os: ubuntu-latest
+            shell: pwsh
+          - name: macos-core
+            os: macos-latest
+            shell: pwsh
+          - name: windows-core
+            os: windows-latest
+            shell: pwsh
+          - name: windows-desktop
+            os: windows-latest
+            shell: powershell
+    defaults:
+      run:
+        shell: ${{ matrix.host.shell }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install tools (Pester + PSScriptAnalyzer)
-        run: |
-          Install-Module -Name Utilities -Scope CurrentUser -Force
-        shell: pwsh
+      - name: Set up Java for processor integration tests
+        if: matrix.suite == 'Integration'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-      - name: Lint module
+      - name: Install pinned validation tools
         run: |
-          Invoke-ScriptAnalyzer -Path $env:MODULE_PATH -Recurse -Severity Warning,Error
-        shell: pwsh
+          $ErrorActionPreference = "Stop"
+          if ($PSVersionTable.PSEdition -eq "Desktop") {
+              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          }
+          $pesterParams = @{
+              Name = "Pester"
+              RequiredVersion = "5.7.1"
+              Scope = "CurrentUser"
+              Force = $true
+              AllowClobber = $true
+              ErrorAction = "Stop"
+          }
+          Install-Module @pesterParams
+          $analyzerParams = @{
+              Name = "PSScriptAnalyzer"
+              RequiredVersion = "1.24.0"
+              Scope = "CurrentUser"
+              Force = $true
+              ErrorAction = "Stop"
+          }
+          Install-Module @analyzerParams
+
+      - name: Report analyzer warnings and block errors
+        if: matrix.suite == 'Unit'
+        run: |
+          $ErrorActionPreference = "Stop"
+          Import-Module -Name PSScriptAnalyzer -RequiredVersion "1.24.0"
+          $paths = @(".\*.ps1", ".\*.psm1", ".\*.psd1", ".\polyglot\*.ps1", ".\polyglot\*.psm1")
+          $findings = @(
+              foreach ($file in (Get-ChildItem -Path $paths -File)) {
+                  $analysisParams = @{
+                      Path = $file.FullName
+                      Severity = @("Warning", "Error")
+                      ErrorAction = "Stop"
+                  }
+                  Invoke-ScriptAnalyzer @analysisParams
+              }
+          )
+          $findings | Format-Table -AutoSize
+          $errors = @($findings | Where-Object { $_.Severity -eq "Error" })
+          if ($errors.Count -gt 0) {
+              throw "Script analysis reported $($errors.Count) errors."
+          }
 
       - name: Run tests
+        env:
+          TEST_SUITE: ${{ matrix.suite }}
         run: |
-          Invoke-Pester -Path "$env:MODULE_PATH/test/unit" -Output Detailed
-        shell: pwsh
+          $testParams = @{
+              Suite = $env:TEST_SUITE
+              OutputPath = ".\test_out"
+              NoCoverage = $true
+              RealNetwork = ($env:TEST_SUITE -eq "Integration")
+          }
+          .\test-harness.ps1 @testParams
 
-      # Optional: bump module version from tag, *even for private use*
-      - name: Set module version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          $tag = "${{ github.ref_name }}"  # e.g. v1.2.3
-          $version = $tag.TrimStart('v')
-
-          $psd1Path = Join-Path $env:MODULE_PATH "$env:MODULE_NAME.psd1"
-          $data = Import-PowerShellDataFile $psd1Path
-          $data.ModuleVersion = $version
-          Export-PowerShellDataFile -Hashtable $data -Path $psd1Path
-        shell: pwsh
-
-      - name: Package module (zip)
-        run: |
-          $dest = "out"
-          New-Item -ItemType Directory -Path $dest -Force | Out-Null
-          # Copy module files (exclude test artifacts, CI config, and the out dir itself)
-          Copy-Item -Path *.ps1, *.psd1, *.psm1, sbom.xml -Destination $dest
-          Copy-Item -Recurse -Path polyglot -Destination $dest
-          Copy-Item -Recurse -Path test_data -Destination $dest
-        shell: pwsh
-
-      - name: Upload artifact
+      - name: Upload test results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.MODULE_NAME }}-${{ github.ref_name }}
-          path: out
-      - name: Publish PowerShell Module to Gallery
-        uses: natescherer/publish-powershell-action@v1
+          name: test-results-${{ matrix.host.name }}-${{ matrix.suite }}
+          path: test_out
+
+  package:
+    name: Stage and smoke-test module
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set module version from release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $manifestParams = @{
+              Path = ".\powerxml.psd1"
+              ModuleVersion = $env:RELEASE_TAG.Substring(1)
+              ErrorAction = "Stop"
+          }
+          Update-ModuleManifest @manifestParams
+
+      - name: Stage module
+        run: |
+          $directoryParams = @{
+              ItemType = "Directory"
+              Path = ".\out"
+              ErrorAction = "Stop"
+          }
+          New-Item @directoryParams | Out-Null
+          $copyParams = @{
+              Path = @("*.ps1", "*.psd1", "*.psm1", "sbom.xml")
+              Destination = ".\out"
+              ErrorAction = "Stop"
+          }
+          Copy-Item @copyParams
+          $resourceParams = @{
+              Path = @("polyglot", "test_data")
+              Destination = ".\out"
+              Recurse = $true
+              ErrorAction = "Stop"
+          }
+          Copy-Item @resourceParams
+          $readParams = @{
+              LiteralPath = ".\out\powerxml.psd1"
+              Raw = $true
+              Encoding = "utf8"
+              ErrorAction = "Stop"
+          }
+          $manifestContent = Get-Content @readParams
+          $encodingParams = @{
+              LiteralPath = ".\out\powerxml.psd1"
+              Value = $manifestContent
+              Encoding = "utf8BOM"
+              NoNewline = $true
+              ErrorAction = "Stop"
+          }
+          Set-Content @encodingParams
+
+      - name: Validate staged module in a fresh process
+        run: |
+          $ErrorActionPreference = "Stop"
+          Test-ModuleManifest -Path ".\out\powerxml.psd1" | Out-Null
+          Import-Module -Name ".\out\powerxml.psd1" -ErrorAction Stop
+          $transformParams = @{
+              Processing = "xslt"
+              Processor = "dotnet"
+              Pipeline = ".\out\test_data\identity.xsl"
+              InPort = ".\out\test_data\order.xml"
+          }
+          [xml]$actual = Transform-PXXml @transformParams
+          [xml]$expected = Get-Content -Path ".\out\test_data\order.xml" -Raw
+          if ($actual.DocumentElement.OuterXml -ne $expected.DocumentElement.OuterXml) {
+              throw "The staged module failed the identity transformation smoke test."
+          }
+
+      - name: Upload validated module
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.PSGALLERY }}
-          target: gallery
+          name: powerxml
           path: out
-      - name: Publish PowerShell Module to GitHub
-        uses: natescherer/publish-powershell-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          target: github
-          path: out
+
+  required-validation:
+    name: CI / Required validation
+    if: always()
+    needs: [test, package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful tests and package validation
+        shell: pwsh
+        env:
+          VALIDATION_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $resultParams = @{
+              InputObject = $env:VALIDATION_RESULTS
+              AsHashtable = $true
+              ErrorAction = "Stop"
+          }
+          $results = ConvertFrom-Json @resultParams
+          foreach ($job in @("test", "package")) {
+              if ($results[$job].result -ne "success") {
+                  throw "Required validation failed: $job completed with result '$($results[$job].result)'."
+              }
+          }
+          Write-Output "All tests and staged-package validation succeeded."

@@ -86,10 +86,18 @@ function Resolve-PXXmlInput {
         else {
             $xmlContent = $InputObject.OuterXml
         }
-        Set-Content `
-            -Path $tempFile `
-            -Value $xmlContent `
-            -Encoding $encoding
+        if ($encoding -eq "UTF8") {
+            [System.IO.File]::WriteAllText($tempFile, $xmlContent, [System.Text.UTF8Encoding]::new($false))
+        }
+        else {
+            $writeParams = @{
+                Path = $tempFile
+                Value = $xmlContent
+                Encoding = $encoding
+                ErrorAction = "Stop"
+            }
+            Set-Content @writeParams
+        }
         return $tempFile
     }
     else {
@@ -483,6 +491,10 @@ Either a path to a processor configuration file, or a hashtable of configuration
 XProc only. When set, all outputs (STDOUT documents plus any bound output ports) are additionally written to this file as a multipart/mixed message with an X-Port header per part, suitable for feeding back as input. STDOUT documents are labeled with the conventional "result" port.
 .PARAMETER ClassPath
 XProc only. A ready-made Java classpath used verbatim (order preserved), bypassing PolyglotPM dependency resolution and processor discovery entirely — for tools that manage their own jars. Use -PassthroughJava for JVM options such as javaagents and -Configuration to supply a processor config file. When -ClassPath is given without -Configuration, no config is generated.
+.PARAMETER Options
+Literal string, boolean, or numeric XProc option values, or existing XSLT parameter bindings. Strings are never inferred to be XPath expressions.
+.PARAMETER OptionExpressions
+XProc only. A hashtable of explicit XPath expressions evaluated without a context item using the effective namespace bindings. Ordinary -Options values are literal strings, booleans, or numbers; an option cannot appear in both dictionaries.
 #>
 function Transform-PXXml {
     [CmdletBinding(DefaultParameterSetName = "Pipeline")]
@@ -500,6 +512,7 @@ function Transform-PXXml {
         [string]$Step,
         [Alias("parameters")]
         [hashtable]$Options,
+        [hashtable]$OptionExpressions,
         $InPort,
         $OutPort,
         [string]$Catalog,
@@ -522,10 +535,9 @@ function Transform-PXXml {
     if ($ClassPath -and $Processing -ne "xproc") {
         throw "-ClassPath is only supported for XProc processing."
     }
-
-    $pipelinePath = $null
-    if ($PSCmdlet.ParameterSetName -eq "Pipeline") {
-        $pipelinePath = Resolve-PXXmlInput -InputObject $Pipeline -Extension "xpl"
+    if ($PSBoundParameters.ContainsKey("OptionExpressions") -and
+        ($Processing -ne "xproc" -or $Processor -notin @("xmlcalabash", "morganaxproc"))) {
+        throw "-OptionExpressions is only supported for the XML Calabash and Morgana XProc processors."
     }
 
     # Merge the session-scoped namespace registry (Register-PXNamespace) with the
@@ -542,6 +554,19 @@ function Transform-PXXml {
                 $effectiveNamespace[$key] = $Namespace[$key]
             }
         }
+    }
+    if ($Processing -eq "xproc" -and $Processor -in @("xmlcalabash", "morganaxproc")) {
+        $optionParams = @{
+            Options = $Options
+            OptionExpressions = $OptionExpressions
+            Namespace = $effectiveNamespace
+        }
+        Get-PXXProcOptionBindings @optionParams | Out-Null
+    }
+
+    $pipelinePath = $null
+    if ($PSCmdlet.ParameterSetName -eq "Pipeline") {
+        $pipelinePath = Resolve-PXXmlInput -InputObject $Pipeline -Extension "xpl"
     }
 
     # Resolve the step QName for direct step execution; unprefixed names get "p:"
@@ -712,6 +737,7 @@ function Transform-PXXml {
                 -Step $stepQName `
                 -Pipeline $pipelinePath `
                 -Options $Options `
+                -OptionExpressions $OptionExpressions `
                 -InPort $inPortProcessed `
                 -OutPort $OutPort `
                 -Catalog $Catalog `
@@ -725,11 +751,15 @@ function Transform-PXXml {
             # MorganaXProc has no step-run CLI: synthesize a wrapper pipeline (#9)
             $morganaPipelinePath = $pipelinePath
             if ($stepQName) {
-                $morganaPipelinePath = New-PXStepShell -Step $stepQName `
-                    -Namespaces $effectiveNamespace `
-                    -InPort $inPortProcessed `
-                    -OutPort $OutPort `
-                    -Options $Options
+                $shellParams = @{
+                    Step = $stepQName
+                    Namespaces = $effectiveNamespace
+                    InPort = $inPortProcessed
+                    OutPort = $OutPort
+                    Options = $Options
+                    OptionExpressions = $OptionExpressions
+                }
+                $morganaPipelinePath = New-PXStepShell @shellParams
             }
             try {
                 $result = Invoke-MorganaXProc `
@@ -738,6 +768,7 @@ function Transform-PXXml {
                     -InputObject $InputObject `
                     -Pipeline $morganaPipelinePath `
                     -Options $Options `
+                    -OptionExpressions $OptionExpressions `
                     -InPort $inPortProcessed `
                     -OutPort $OutPort `
                     -Catalog $Catalog `

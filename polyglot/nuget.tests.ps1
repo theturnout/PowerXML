@@ -32,8 +32,20 @@ BeforeAll {
             "<package><metadata><id>$Id</id><version>$Version</version></metadata></package>" -NoNewline
 
         $null = New-Item -ItemType Directory -Path $versionDir -Force
-        Compress-Archive -Path (Join-Path $staging '*') `
-            -DestinationPath (Join-Path $versionDir "$idLower.$Version.nupkg") -Force
+        $zipPath = Join-Path $versionDir "$idLower.$Version.zip"
+        $archiveParams = @{
+            Path = (Join-Path $staging "*")
+            DestinationPath = $zipPath
+            Force = $true
+            ErrorAction = "Stop"
+        }
+        Compress-Archive @archiveParams
+        $moveParams = @{
+            LiteralPath = $zipPath
+            Destination = (Join-Path $versionDir "$idLower.$Version.nupkg")
+            ErrorAction = "Stop"
+        }
+        Move-Item @moveParams
         Copy-Item -Path (Join-Path $staging '*') -Destination $versionDir -Recurse
         Remove-Item -Recurse -Force $staging
     }

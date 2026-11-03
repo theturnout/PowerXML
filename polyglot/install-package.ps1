@@ -28,7 +28,7 @@
     The full path to the installed package directory.
 #>
 # WinPS 5.1 compatibility: the zip API is auto-loaded in .NET Core but not .NET Framework
-Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+Add-Type -AssemblyName @("System.IO.Compression", "System.IO.Compression.FileSystem") -ErrorAction Stop
 
 <#
 .SYNOPSIS
@@ -60,7 +60,7 @@ function Get-ArchiveRoot {
         return $null
     }
     try {
-        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName } | Where-Object { $_ })
+        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName -replace "\\", "/" } | Where-Object { $_ })
         # macOS-created archives carry packaging junk alongside the real
         # content: the __MACOSX resource-fork tree and AppleDouble (._*)
         # metadata entries. They are not content, so they must not count as
