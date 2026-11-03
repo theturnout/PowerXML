@@ -252,7 +252,7 @@ The [CI workflow](.github/workflows/ci.yml) runs both suites on Linux, macOS, Wi
 
 Linux unit jobs install `xsltproc` through apt. macOS unit jobs use the system executable when available, otherwise install Homebrew `libxslt` and add its keg-only `bin` directory to `PATH`. Both jobs verify executable discovery and version before testing, so missing xsltproc coverage fails provisioning instead of silently skipping the six backend tests. Windows retains optional xsltproc detection.
 
-The [Release workflow](.github/workflows/release.yml) runs only when a `v*.*.*` tag is pushed. It calls the same CI workflow against the tagged commit, then publishes the validated artifact only after all tests, the staged-module smoke test, and the required-validation check succeed. CI has read-only permissions and receives no publication secrets; write permissions and the `PSGALLERY` secret are used only by the publishing job.
+The [Release workflow](.github/workflows/release.yml) runs only when a `v*.*.*` tag is pushed. It calls the same CI workflow against the tagged commit, then publishes the validated artifact only after all tests, the staged-module smoke test, and the required-validation check succeed. The staging and smoke-test scripts are also regression-tested in separate fresh processes, using native file paths for .NET on every host. CI has read-only permissions and receives no publication secrets; write permissions and the `PSGALLERY` secret are used only by the publishing job.
 
 ### Configuring the merge gate
 

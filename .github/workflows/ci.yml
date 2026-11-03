@@ -206,14 +206,15 @@ jobs:
           $ErrorActionPreference = "Stop"
           Test-ModuleManifest -Path ".\out\powerxml.psd1" | Out-Null
           Import-Module -Name ".\out\powerxml.psd1" -ErrorAction Stop
+          $stagedPath = (Resolve-Path -LiteralPath ".\out" -ErrorAction Stop).ProviderPath
           $transformParams = @{
               Processing = "xslt"
               Processor = "dotnet"
-              Pipeline = ".\out\test_data\identity.xsl"
-              InPort = ".\out\test_data\order.xml"
+              Pipeline = (Join-Path -Path $stagedPath -ChildPath "test_data\identity.xsl")
+              InPort = (Join-Path -Path $stagedPath -ChildPath "test_data\order.xml")
           }
           [xml]$actual = Transform-PXXml @transformParams
-          [xml]$expected = Get-Content -Path ".\out\test_data\order.xml" -Raw
+          [xml]$expected = Get-Content -LiteralPath $transformParams.InPort -Raw
           if ($actual.DocumentElement.OuterXml -ne $expected.DocumentElement.OuterXml) {
               throw "The staged module failed the identity transformation smoke test."
           }
