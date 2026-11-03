@@ -38,7 +38,7 @@ Describe "XProc option value contract" {
 			$script:OptionTestParams = @{
 				Processor = $Processor
 				PackageResolution = @{ TargetComposition = "pester-tests" }
-				Pipeline = "$PSScriptRoot\test_data\option-values.xpl"
+				Pipeline = (Join-Path -Path $PSScriptRoot -ChildPath "test_data\option-values.xpl")
 				Namespace = @{
 					opt = "urn:powerxml:options"
 					typed = "http://www.w3.org/2001/XMLSchema"
@@ -958,10 +958,17 @@ Describe 'Manual classpath' {
             $env:polyglotpm = $emptyRepo
             try {
                 # Build the classpath from the standard test cache
-                $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else { Join-Path $env:TEMP "powerxml-test-deps" }
+                $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else {
+                    Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "powerxml-test-deps"
+                }
+                $separator = [System.IO.Path]::PathSeparator
                 if ($_.Name -eq "xmlcalabash") {
                     $procDir = (Get-ChildItem $deps -Directory -Filter "xmlcalabash-*" | Select-Object -First 1).FullName
-                    $cp = "$procDir\*;$procDir\lib\*;$procDir\extra\*"
+                    $cp = @(
+                        (Join-Path -Path $procDir -ChildPath "*")
+                        (Join-Path -Path $procDir -ChildPath "lib\*")
+                        (Join-Path -Path $procDir -ChildPath "extra\*")
+                    ) -join $separator
                 }
                 else {
                     # Pick a Morgana install that actually contains the engine jar
@@ -970,7 +977,10 @@ Describe 'Manual classpath' {
                         Where-Object { Test-Path (Join-Path $_.FullName "MorganaXProc-IIIse.jar") } |
                         Select-Object -First 1).FullName
                     $libDir = (Get-ChildItem $procDir -Directory -Filter "*lib*" | Select-Object -First 1).FullName
-                    $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
+                    $cp = @(
+                        (Join-Path -Path $procDir -ChildPath "MorganaXProc-IIIse.jar")
+                        (Join-Path -Path $libDir -ChildPath "*")
+                    ) -join $separator
                 }
 
                 $result = Transform-PXXml -Processor $_.Name -ClassPath $cp -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
@@ -987,12 +997,17 @@ Describe 'Manual classpath' {
     }
 
     It "morganaxproc - Should pass a configuration file through with a manual classpath" {
-        $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else { Join-Path $env:TEMP "powerxml-test-deps" }
+        $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else {
+            Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "powerxml-test-deps"
+        }
         $procDir = (Get-ChildItem $deps -Directory -Filter "morganaxproc-IIIse*" |
             Where-Object { Test-Path (Join-Path $_.FullName "MorganaXProc-IIIse.jar") } |
             Select-Object -First 1).FullName
         $libDir = (Get-ChildItem $procDir -Directory -Filter "*lib*" | Select-Object -First 1).FullName
-        $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
+        $cp = @(
+            (Join-Path -Path $procDir -ChildPath "MorganaXProc-IIIse.jar")
+            (Join-Path -Path $libDir -ChildPath "*")
+        ) -join [System.IO.Path]::PathSeparator
         $userConfig = Join-Path $TestDrive "manual-morgana-config.xml"
         Set-Content -Path $userConfig -Value '<?xml version="1.0" encoding="UTF-8"?><morgana-config xmlns="http://www.xml-project.com/morganaxproc"/>'
 

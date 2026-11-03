@@ -623,10 +623,10 @@ function Transform-PXXml {
         $expandedInPort = @{}
         foreach ($key in @($InPort.Keys)) {
             $val = $InPort[$key]
-            $candidate = if ($val -is [string]) { $val } else { $null }
+            $candidate = if ($val -is [string] -and $val.IndexOfAny([System.IO.Path]::GetInvalidPathChars()) -lt 0) { $val } else { $null }
             $isMime = $false
             $boundary = $null
-            if ($candidate -and (Test-Path $candidate -PathType Leaf)) {
+            if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
                 $firstLine = (Get-Content -Path $candidate -TotalCount 1 -ErrorAction SilentlyContinue)
                 if ($firstLine -and $firstLine.Trim().StartsWith("--")) {
                     # Strip exactly the leading "--" delimiter; the boundary itself

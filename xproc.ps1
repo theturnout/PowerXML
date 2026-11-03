@@ -12,8 +12,8 @@ function Get-PXMultiXmlDocuments {
         [string]$StdOut
     )
     
-    $headerPattern = '^=== result :: \d+ :: .+?={10,}\r?\n'
-    $trailerPattern = '^={72,}\r?\n?'
+    $headerPattern = '^=== result :: \d+ :: .+? ={3,}\r?\n'
+    $trailerPattern = '^={3,}\r?\n?\s*\z'
     $firstLine = ($StdOut -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -First 1)
 
     $output = if ($firstLine -match '^--(.+)') {

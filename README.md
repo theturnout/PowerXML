@@ -136,6 +136,8 @@ Unicode literal strings are serialized using XPath code points to avoid native-a
 
 Generated XML inputs, processor configurations, and step wrappers use BOM-free UTF-8 consistently on Core and Windows PowerShell 5.1.
 
+Calabash text output separators vary with temporary-path length. PowerXML recognizes short header padding and variable-width trailer lines when collecting document sequences.
+
 ### Composition Registry
 
 Session-scoped software compositions, used by `Transform-PXXml` when no `-PackageResolution` is given (explicit entries take precedence). Compositions resolve once and cache their paths:

@@ -7,6 +7,43 @@ Describe 'Transform-Xml XProc Processing' {
     }
     
     Context "XmlCalabash standard out" {
+		It "Preserves separator-like lines inside an XML document" {
+			$stdout = @(
+				"=== result :: 1 :: file:/long/temporary/path/first.xml ==="
+				"<root>"
+				"==="
+				"========================================================================"
+				"</root>"
+				("=" * 82)
+				""
+			) -join "`n"
+			$result = @($stdout | Get-PXMultiXmlDocuments)
+			$result.Count | Should -Be 1
+			$result[0] | Should -BeOfType [xml]
+			$result[0].root | Should -BeExactly "`n===`n========================================================================`n"
+		}
+
+		It "Parses a short header separator and variable-width trailers (<LineEnding>, <Width>)" -ForEach @(
+			@{ LineEnding = "LF"; Newline = "`n"; Width = 82 }
+			@{ LineEnding = "CRLF"; Newline = "`r`n"; Width = 90 }
+			@{ LineEnding = "LF"; Newline = "`n"; Width = 60 }
+		) {
+			$trailer = "=" * $Width
+			$stdout = @(
+				"=== result :: 1 :: file:/long/temporary/path/first.xml ==="
+				"<root><message>Doc1</message></root>"
+				$trailer
+				"=== result :: 2 :: file:/long/temporary/path/second.xml ==="
+				"<root><message>Doc2</message></root>"
+				$trailer
+			) -join $Newline
+			$result = @($stdout | Get-PXMultiXmlDocuments)
+			$result.Count | Should -Be 2
+			$result[0] | Should -BeOfType [xml]
+			$result[1] | Should -BeOfType [xml]
+			$result[0].root.message | Should -BeExactly "Doc1"
+			$result[1].root.message | Should -BeExactly "Doc2"
+		}
         
         It "Should parse into multiple documents" {
             $thing = @"
@@ -211,6 +248,27 @@ Content-Type: application/xml
 				CommandName = "Resolve-PXXmlInput"
 				ModuleName = "powerxml"
 				Times = 0
+			}
+			Should @invokeParams
+		}
+
+		It "Does not probe inline XML as a MIME file under Stop error preference" {
+			$ErrorActionPreference = "Stop"
+			Mock Resolve-PXXmlInput -ModuleName powerxml { $InputObject }
+			Mock Invoke-XmlCalabash -ModuleName powerxml { "<result/>" }
+			$transformParams = @{
+				Processor = "xmlcalabash"
+				ClassPath = "caller-owned-classpath"
+				Step = "p:identity"
+				InPort = @{ source = '<root label="inline"/>' }
+			}
+			Transform-PXXml @transformParams | Should -BeExactly "<result/>"
+			$invokeParams = @{
+				Invoke = $true
+				CommandName = "Invoke-XmlCalabash"
+				ModuleName = "powerxml"
+				Times = 1
+				Exactly = $true
 			}
 			Should @invokeParams
 		}
