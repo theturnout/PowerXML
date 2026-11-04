@@ -1,4 +1,4 @@
-#
+﻿#
 # Module manifest for module 'powerxml'
 #
 
@@ -125,4 +125,3 @@
     # DefaultCommandPrefix = ''
 
 }
-

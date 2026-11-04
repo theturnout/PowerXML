@@ -20,7 +20,9 @@ Transform-Xml  -PackageResolution @{ sbomPath; targetComposition; GetLatest }
        │    ├─ Copy-GitHubRelease  — github / codeberg
        │    ├─ Get-MavenArtifact   — maven
        │    ├─ Invoke-WebRequest   — sourceforge
-       │    └─ Invoke-WebRequest   — nuget (NuGet v3 flat-container API)
+       │    ├─ Invoke-WebRequest   — nuget root download (flat-container API)
+       │    └─ Resolve-NuGetDependencies (nuget.ps1) — nuget dependency
+       │         closure via AnyPackage.NuGet into the local repository
        └─ Install-Package      (install-package.ps1) — extract, verify hashes
 ```
 
@@ -59,8 +61,9 @@ For each dependency listed in the selected SBOM composition:
 
 ## NuGet specifics
 
-The `nuget` branch of `Get-PackageFromPurl` is deliberately simpler than the
-Maven path; the differences below are behavioral contracts, not gaps:
+The `nuget` branch of `Get-PackageFromPurl` resolves transitive dependencies
+through `Resolve-NuGetDependencies` (nuget.ps1); the details below are
+behavioral contracts:
 
 - **Download** —
   `https://api.nuget.org/v3-flatcontainer/{id-lower}/{version}/{id-lower}.{version}.nupkg`,
@@ -73,17 +76,26 @@ Maven path; the differences below are behavioral contracts, not gaps:
   roots (`[Content_Types].xml`, `_rels/`, `lib/`, ...), so wrapper detection
   finds none and the contents are extracted directly into the canonical
   `{Name}-{Version}/` directory, leaving the `lib/{tfm}/` layout intact.
-- **No nuspec dependency resolution** — dependency groups in the package's
-  `.nuspec` are ignored. Only Maven POMs are walked (`pom.ps1`); every NuGet
-  dependency, transitive or not, must appear as a component referenced by
-  the composition. The `phoenixml` composition in the bundled `sbom.xml` is
-  a worked example of a complete closure.
+- **Dependency resolution** — `Resolve-NuGetDependencies` uses the
+  AnyPackage.NuGet provider as an oracle: the package is installed into a
+  throwaway global-packages folder (`$env:NUGET_PACKAGES`, scoped and
+  restored), whose contents are exactly the resolved closure for the target
+  framework (`Get-PXNuGetTargetFramework`: the runtime's netN.0 on
+  PowerShell 7+, netstandard2.0 otherwise). Each resolved package is
+  materialized in the local repository via `Install-Package` from the
+  throwaway folder's `.nupkg`, using the canonical id from the `.nuspec`
+  filename; the closure is recorded in a `{Name}-{Version}.deps.json`
+  marker. Resolution runs only when the marker is missing or incomplete or
+  the package is being installed fresh; an installed directory with no
+  `.nuspec` and no marker (a fixture or hand-made package) is left alone.
+  Without the provider — or if resolution fails — a warning is emitted and
+  only the SBOM-listed packages are returned.
 - **Latest version** — `Resolve-LatestVersion` takes the last entry of the
   flat-container version index, which includes prereleases, so `-GetLatest`
   may resolve a prerelease version for a NuGet component.
 - **Idempotency** — an existing `{Name}-{Version}` directory short-circuits
-  the download; `Test-Composition` reports installed state without network
-  access.
+  the download; a complete dependency marker short-circuits resolution;
+  `Test-Composition` reports installed state without network access.
 
 ## Version cache
 
@@ -121,3 +133,4 @@ purl without corrupting adjacent text:
 | `sbom.ps1` | SBOM XML validation (`Test-SBOM`) |
 | `cyclonedx.ps1` | SBOM creation / mutation helpers |
 | `pom.ps1` | Maven POM parsing and transitive dependency resolution |
+| `nuget.ps1` | NuGet transitive dependency resolution via AnyPackage.NuGet |

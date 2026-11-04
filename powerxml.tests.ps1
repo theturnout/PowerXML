@@ -16,10 +16,155 @@ BeforeAll {
     if (-not (Test-Path $env:polyglotpm)) {
         New-Item -ItemType Directory -Path $env:polyglotpm | Out-Null
     }
+    $importParams = @{
+        Name = "$PSScriptRoot/powerxml.psd1"
+        Force = $true
+        DisableNameChecking = $true
+        ErrorAction = "Stop"
+    }
+    Import-Module @importParams
 }
 
 AfterAll {
     $env:polyglotpm = $null
+}
+
+Describe "XProc option value contract" {
+	Context "<Processor>" -ForEach @(
+		@{ Processor = "xmlcalabash" }
+		@{ Processor = "morganaxproc" }
+	) {
+		BeforeEach {
+			$script:OptionTestParams = @{
+				Processor = $Processor
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Pipeline = (Join-Path -Path $PSScriptRoot -ChildPath "test_data\option-values.xpl")
+				Namespace = @{
+					opt = "urn:powerxml:options"
+					typed = "http://www.w3.org/2001/XMLSchema"
+				}
+			}
+		}
+
+		It "Preserves literal string <Name>" -ForEach @(
+			@{ Name = "ordinary"; Text = "John" }
+			@{ Name = "empty"; Text = "" }
+			@{ Name = "padded"; Text = "  padded text  " }
+			@{ Name = "apostrophe"; Text = "O'Brien" }
+			@{ Name = "double quotes"; Text = "say `"hello`"" }
+			@{ Name = "both quote types"; Text = "O'Brien said `"hello`"" }
+			@{ Name = "quoted space"; Text = "left `" `" right" }
+			@{ Name = "XPath-looking"; Text = "5 + 3" }
+			@{ Name = "Calabash expression prefix"; Text = "?5 + 3" }
+			@{ Name = "prequoted"; Text = "'John'" }
+			@{ Name = "backslashes"; Text = "C:\folder\`"quoted`"\" }
+			@{ Name = "newlines"; Text = "first`nsecond`tthird" }
+			@{ Name = "Unicode"; Text = ("caf" + [char]0x00E9 + " " + [char]::ConvertFromUtf32(0x1F642)) }
+		) {
+			$script:OptionTestParams.Options = @{ text = $Text; value = $Text }
+			[xml]$actual = Transform-PXXml @script:OptionTestParams
+			$actual.result.text | Should -BeExactly $Text
+			$actual.result.value | Should -BeExactly $Text
+			$actual.result.type | Should -BeExactly "string"
+		}
+
+		It "Preserves numeric or boolean <Name>" -ForEach @(
+			@{ Name = "integer"; Value = 42; Expected = "42"; Type = "integer" }
+			@{ Name = "long"; Value = [long]2147483648; Expected = "2147483648"; Type = "integer" }
+			@{ Name = "true"; Value = $true; Expected = "true"; Type = "boolean" }
+			@{ Name = "false"; Value = $false; Expected = "false"; Type = "boolean" }
+			@{ Name = "decimal"; Value = [decimal]25; Expected = "25"; Type = "decimal" }
+			@{ Name = "float"; Value = [single]1.5; Expected = "1.5"; Type = "float" }
+			@{ Name = "double"; Value = [double]1.5; Expected = "1.5"; Type = "double" }
+			@{ Name = "NaN"; Value = [double]::NaN; Expected = "NaN"; Type = "double" }
+		) {
+			$script:OptionTestParams.Options = @{ value = $Value }
+			[xml]$actual = Transform-PXXml @script:OptionTestParams
+			$actual.result.value | Should -BeExactly $Expected
+			$actual.result.type | Should -BeExactly $Type
+		}
+
+		It "Evaluates explicit <Name>" -ForEach @(
+			@{ Name = "arithmetic"; Expression = "5 + 3"; Expected = "8"; Type = "integer" }
+			@{ Name = "quoted function"; Expression = "concat(`"Hello`", `" `", `"World`")"; Expected = "Hello World"; Type = "string" }
+			@{ Name = "sequence"; Expression = "(1, 2, 3)"; Expected = "1|2|3"; Type = "other" }
+			@{ Name = "empty sequence"; Expression = "()"; Expected = ""; Type = "other" }
+			@{ Name = "boolean"; Expression = "true()"; Expected = "true"; Type = "boolean" }
+			@{ Name = "namespaced function"; Expression = "typed:integer('8')"; Expected = "8"; Type = "integer" }
+			@{ Name = "map"; Expression = "map { 'label': 'mapped value' }"; Expected = "mapped value"; Type = "map" }
+		) {
+			$script:OptionTestParams.Options = @{ text = "literal"; count = 42; enabled = $true; amount = [decimal]25.5 }
+			$script:OptionTestParams.OptionExpressions = @{ value = $Expression; "opt:label" = "concat('namespaced', ' expression')" }
+			[xml]$actual = Transform-PXXml @script:OptionTestParams
+			$actual.result.text | Should -BeExactly "literal"
+			$actual.result.count | Should -BeExactly "42"
+			$actual.result.enabled | Should -BeExactly "true"
+			$actual.result.amount | Should -BeExactly "25.5"
+			$actual.result.label | Should -BeExactly "namespaced expression"
+			$actual.result.value | Should -BeExactly $Expected
+			$actual.result.type | Should -BeExactly $Type
+		}
+
+		It "Binds a namespaced literal using <Name>" -ForEach @(
+			@{ Name = "prefix"; OptionName = "opt:label" }
+			@{ Name = "EQName"; OptionName = "Q{urn:powerxml:options}label" }
+		) {
+			$script:OptionTestParams.Options = @{ $OptionName = "O'Brien said `"hello`"" }
+			[xml]$actual = Transform-PXXml @script:OptionTestParams
+			$actual.result.label | Should -BeExactly "O'Brien said `"hello`""
+		}
+
+		It "Serializes numbers independently of the caller culture" {
+			$originalCulture = [System.Threading.Thread]::CurrentThread.CurrentCulture
+			try {
+				[System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::GetCultureInfo("fr-FR")
+				$script:OptionTestParams.Options = @{ amount = [decimal]25.5; value = [double]1.5 }
+				[xml]$actual = Transform-PXXml @script:OptionTestParams
+				$actual.result.amount | Should -BeExactly "25.5"
+				$actual.result.value | Should -BeExactly "1.5"
+			}
+			finally {
+				[System.Threading.Thread]::CurrentThread.CurrentCulture = $originalCulture
+			}
+		}
+
+		It "Supports <Name> options in direct step mode" -ForEach @(
+			@{ Name = "literal"; LiteralOptions = @{ select = "/*/*[1]" }; Expressions = @{} }
+			@{ Name = "expression"; LiteralOptions = @{}; Expressions = @{ select = "concat('/*', '/*[1]')" } }
+		) {
+			$transformParams = @{
+				Processor = $Processor
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Step = "p:filter"
+				InPort = "<root><one/><two/></root>"
+				Options = $LiteralOptions
+				OptionExpressions = $Expressions
+			}
+			[xml]$actual = Transform-PXXml @transformParams
+			$actual.DocumentElement.LocalName | Should -BeExactly "one"
+		}
+
+		It "Surfaces invalid XPath instead of treating it as a literal" {
+			$script:OptionTestParams.OptionExpressions = @{ value = "5 +" }
+			{ Transform-PXXml @script:OptionTestParams } | Should -Throw "*failed with exit code*"
+		}
+
+		It "Mixes literal and expression options in direct step mode" {
+			$transformParams = @{
+				Processor = $Processor
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Step = "p:add-attribute"
+				InPort = "<root/>"
+				Options = @{ match = "/*" }
+				OptionExpressions = @{
+					"attribute-name" = "QName('', 'label')"
+					"attribute-value" = "concat('Hello', ' ', 'World')"
+				}
+			}
+			[xml]$actual = Transform-PXXml @transformParams
+			$actual.root.label | Should -BeExactly "Hello World"
+		}
+	}
 }
 
 Describe 'Transform-PXXml' {
@@ -516,12 +661,12 @@ Describe 'Direct step execution' {
     ) {
         It "$($_.Name) - Should run p:identity directly" {
             $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
-            $result | Should -BeLike "*ORD-001*"
+            ([xml]$result).order.id | Should -BeExactly "ORD-001"
         }
 
         It "$($_.Name) - Should run a step with a single-value InPort" {
             $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort "$PSScriptRoot/test_data/order.xml"
-            $result | Should -BeLike "*ORD-001*"
+            ([xml]$result).order.id | Should -BeExactly "ORD-001"
         }
 
         It "$($_.Name) - Should run p:xinclude directly" {
@@ -539,12 +684,13 @@ Describe 'Direct step execution' {
 
     It "xmlcalabash - Should run p:xslt directly with a stylesheet port" {
         $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "p:xslt" -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = "$PSScriptRoot/test_data/order-total.xsl" }
-        $result | Should -BeLike "*order-summary*"
+        ([xml]$result).DocumentElement.Name | Should -BeExactly "order-summary"
+        ([xml]$result)."order-summary".id | Should -BeExactly "ORD-001"
     }
 
     It "xmlcalabash - Should default unprefixed step names to the p: namespace" {
         $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor "xmlcalabash" -Step "identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
-        $result | Should -BeLike "*ORD-001*"
+        ([xml]$result).order.id | Should -BeExactly "ORD-001"
     }
 
     It "Should throw when -Step is used with -Processing xslt" {
@@ -584,7 +730,18 @@ Describe 'Direct step execution' {
             return "ok"
         }
 
-        Transform-PXXml -Processor "morganaxproc" -ClassPath "fake.jar" -Step "p:xslt" -InPort @{ source = "in.xml"; stylesheet = "style.xsl" } -OutPort @{ result = "out.xml" }
+        $source = Join-Path $TestDrive "in.xml"
+        $stylesheet = Join-Path $TestDrive "style.xsl"
+        Set-Content -Path $source -Value "<root/>"
+        Set-Content -Path $stylesheet -Value (Get-Content -Path "$PSScriptRoot/test_data/identity.xsl" -Raw)
+        $transformParams = @{
+            Processor = "morganaxproc"
+            ClassPath = "fake.jar"
+            Step = "p:xslt"
+            InPort = @{ source = $source; stylesheet = $stylesheet }
+            OutPort = @{ result = (Join-Path $TestDrive "out.xml") }
+        }
+        Transform-PXXml @transformParams
 
         $global:CapturedShell | Should -BeLike "*<p:xslt*"
         $global:CapturedShell | Should -BeLike "*<p:input port=`"source`" primary=`"true`"*"
@@ -639,7 +796,7 @@ Describe 'Input resolution' {
         It "$($_.Name) - Should accept a file URI as InPort source" {
             $orderFileUri = "file:///" + (("$PSScriptRoot/test_data/order.xml") -replace "\\", "/")
             $result = Transform-PXXml -PackageResolution @{TargetComposition = "pester-tests" } -Processor $_.Name -Step "p:identity" -InPort @{ source = $orderFileUri }
-            $result | Should -BeLike "*ORD-001*"
+            ([xml]$result).order.id | Should -BeExactly "ORD-001"
         }
 
         It "$($_.Name) - Should accept a file URI as Pipeline" {
@@ -654,6 +811,43 @@ Describe 'Input resolution' {
         $first = @($result) | Select-Object -First 1
         $content = if ($first -is [System.Xml.XmlDocument]) { $first.OuterXml } else { [string]$first }
         $content | Should -BeLike "*schema*"
+    }
+
+    Context "Missing input fail-fast" {
+        It "Should throw a clear error for a missing InPort file" {
+            { Transform-PXXml -Processing "xslt" -Processor "phoenixml" `
+                    -Pipeline "$PSScriptRoot/test_data/identity.xsl" `
+                    -InPort @{ source = "./test_data/does-not-exist.xml" } } | Should -Throw "*does not match an existing file*"
+        }
+
+        It "Should throw a clear error for a missing Pipeline file" {
+            { Transform-PXXml -Processor "xmlcalabash" -ClassPath "fake-cp" `
+                    -Pipeline "$PSScriptRoot/test_data/no-such-pipeline.xpl" } | Should -Throw "*does not match an existing file*"
+        }
+
+        It "Should pass a URI through unchanged" {
+            $global:CapturedInPort = $null
+            Mock Invoke-XmlCalabash -ModuleName powerxml {
+                $global:CapturedInPort = $InPort
+                return "ok"
+            }
+            Transform-PXXml -Processor "xmlcalabash" -ClassPath "fake-cp" `
+                -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" `
+                -InPort @{ source = "https://example.com/doc.xml" }
+            $global:CapturedInPort["source"] | Should -Be "https://example.com/doc.xml"
+        }
+
+        It "Should pass non-path-like text content through unchanged" {
+            $global:CapturedInPort = $null
+            Mock Invoke-XmlCalabash -ModuleName powerxml {
+                $global:CapturedInPort = $InPort
+                return "ok"
+            }
+            Transform-PXXml -Processor "xmlcalabash" -ClassPath "fake-cp" `
+                -Pipeline "$PSScriptRoot/test_data/helloWorld.xpl" `
+                -InPort @{ source = "plain text content" }
+            $global:CapturedInPort["source"] | Should -Be "plain text content"
+        }
     }
 
     Context "PURL inputs (deterministic, .NET XSLT path)" {
@@ -765,10 +959,17 @@ Describe 'Manual classpath' {
             $env:polyglotpm = $emptyRepo
             try {
                 # Build the classpath from the standard test cache
-                $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else { Join-Path $env:TEMP "powerxml-test-deps" }
+                $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else {
+                    Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "powerxml-test-deps"
+                }
+                $separator = [System.IO.Path]::PathSeparator
                 if ($_.Name -eq "xmlcalabash") {
                     $procDir = (Get-ChildItem $deps -Directory -Filter "xmlcalabash-*" | Select-Object -First 1).FullName
-                    $cp = "$procDir\*;$procDir\lib\*;$procDir\extra\*"
+                    $cp = @(
+                        (Join-Path -Path $procDir -ChildPath "*")
+                        (Join-Path -Path $procDir -ChildPath "lib\*")
+                        (Join-Path -Path $procDir -ChildPath "extra\*")
+                    ) -join $separator
                 }
                 else {
                     # Pick a Morgana install that actually contains the engine jar
@@ -777,7 +978,10 @@ Describe 'Manual classpath' {
                         Where-Object { Test-Path (Join-Path $_.FullName "MorganaXProc-IIIse.jar") } |
                         Select-Object -First 1).FullName
                     $libDir = (Get-ChildItem $procDir -Directory -Filter "*lib*" | Select-Object -First 1).FullName
-                    $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
+                    $cp = @(
+                        (Join-Path -Path $procDir -ChildPath "MorganaXProc-IIIse.jar")
+                        (Join-Path -Path $libDir -ChildPath "*")
+                    ) -join $separator
                 }
 
                 $result = Transform-PXXml -Processor $_.Name -ClassPath $cp -Step "p:identity" -InPort @{ source = "$PSScriptRoot/test_data/order.xml" }
@@ -794,12 +998,17 @@ Describe 'Manual classpath' {
     }
 
     It "morganaxproc - Should pass a configuration file through with a manual classpath" {
-        $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else { Join-Path $env:TEMP "powerxml-test-deps" }
+        $deps = if ($env:POWERXML_TEST_CACHE) { $env:POWERXML_TEST_CACHE } else {
+            Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "powerxml-test-deps"
+        }
         $procDir = (Get-ChildItem $deps -Directory -Filter "morganaxproc-IIIse*" |
             Where-Object { Test-Path (Join-Path $_.FullName "MorganaXProc-IIIse.jar") } |
             Select-Object -First 1).FullName
         $libDir = (Get-ChildItem $procDir -Directory -Filter "*lib*" | Select-Object -First 1).FullName
-        $cp = "$procDir\MorganaXProc-IIIse.jar;$libDir\*"
+        $cp = @(
+            (Join-Path -Path $procDir -ChildPath "MorganaXProc-IIIse.jar")
+            (Join-Path -Path $libDir -ChildPath "*")
+        ) -join [System.IO.Path]::PathSeparator
         $userConfig = Join-Path $TestDrive "manual-morgana-config.xml"
         Set-Content -Path $userConfig -Value '<?xml version="1.0" encoding="UTF-8"?><morgana-config xmlns="http://www.xml-project.com/morganaxproc"/>'
 
@@ -887,7 +1096,8 @@ Describe 'Multipart MIME' {
                 -InPort @{ source = "$PSScriptRoot/test_data/order.xml"; stylesheet = $script:RoutedXsl } `
                 -MultiplexOutput $mimeOut
 
-            $result | Should -BeLike "*routed*"
+            ([xml]$result).DocumentElement.Name | Should -BeExactly "routed"
+            ([xml]$result).routed | Should -BeExactly "ORD-001"
             Test-Path $mimeOut | Should -Be $true
             $message = Get-Content -Path $mimeOut -Raw
             $boundary = (($message -split "`n" | Select-Object -First 1).Trim()).Substring(2)
@@ -1078,6 +1288,32 @@ Describe 'Processor failure handling' {
         @{Name = "xmlcalabash" },
         @{Name = "morganaxproc" }
     ) {
+		It "$($_.Name) - Collects successful stderr under Stop and preserves the caller preference" {
+			$ErrorActionPreference = "Stop"
+			$transformParams = @{
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Processor = $_.Name
+				Pipeline = "$PSScriptRoot/test_data/helloWorld.xpl"
+				MergeOutput = $true
+			}
+			$result = Transform-PXXml @transformParams
+			$result | Should -BeLike "*Hello, World!*"
+			$ErrorActionPreference | Should -BeExactly "Stop"
+		}
+
+		It "$($_.Name) - Reports the process exit code under Stop and preserves the caller preference" {
+			$ErrorActionPreference = "Stop"
+			$transformParams = @{
+				PackageResolution = @{ TargetComposition = "pester-tests" }
+				Processor = $_.Name
+				Pipeline = (Join-Path -Path $PSScriptRoot -ChildPath "test_data\option-values.xpl")
+				OptionExpressions = @{ value = "(" }
+				MergeOutput = $true
+			}
+			{ Transform-PXXml @transformParams } | Should -Throw "*failed with exit code*"
+			$ErrorActionPreference | Should -BeExactly "Stop"
+		}
+
         It "$($_.Name) - Should throw when the pipeline is invalid" {
             $badPipeline = Join-Path $TestDrive "bad-port.xpl"
             Set-Content -Path $badPipeline -Value "<?xml version=`"1.0`" encoding=`"UTF-8`"?><p:declare-step xmlns:p=`"http://www.w3.org/ns/xproc`" name=`"pipeline`" version=`"3.0`"><p:identity><p:with-input port=`"nope`"/></p:identity></p:declare-step>"
@@ -1211,7 +1447,7 @@ Describe 'Namespace registry' {
     It 'Should be idempotent when re-registering the same URI' {
         Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre"
         { Register-PXNamespace -Prefix "pre" -Uri "http://example.com/pre" } | Should -Not -Throw
-        (Get-PXNamespace).Count | Should -Be 1
+        @(Get-PXNamespace).Count | Should -Be 1
     }
 
     It 'Should unregister namespaces and tolerate unknown prefixes' {

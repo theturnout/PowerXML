@@ -120,7 +120,16 @@ function Copy-GitHubRelease {
 
     try {
         # Make the API request
-        $response = Invoke-RestMethod -Uri $url -UseBasicParsing
+        $requestParams = @{
+            Uri = $url
+            UseBasicParsing = $true
+            ErrorAction = "Stop"
+        }
+        $apiUri = [uri]$url
+        if ($env:GITHUB_TOKEN -and $apiUri.Scheme -eq "https" -and $apiUri.Host -eq "api.github.com" -and $apiUri.IsDefaultPort) {
+            $requestParams.Headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
+        }
+        $response = Invoke-RestMethod @requestParams
         # Verify assets are available
         if ($response.assets -and $response.assets.Count -gt 0) {
             $tag = $response.tag_name
@@ -159,7 +168,13 @@ function Copy-GitHubRelease {
                 else {
                     $downloadUrl = $asset.browser_download_url
                     Write-Host "Downloading $fileName from $downloadUrl..."
-                    Invoke-WebRequest -Uri $downloadUrl -OutFile $outFile -UseBasicParsing
+                    $downloadParams = @{
+                        Uri = $downloadUrl
+                        OutFile = $outFile
+                        UseBasicParsing = $true
+                        ErrorAction = "Stop"
+                    }
+                    Invoke-WebRequest @downloadParams
                     Write-Host "$fileName downloaded successfully.`n"
                 }
                 # Validate hash if expected
@@ -182,7 +197,13 @@ function Copy-GitHubRelease {
                     $extract = $false
                 }
                 if ($extract) {
-                    Expand-Archive -Path $outFile -DestinationPath $libPath -Force
+                    $extractParams = @{
+                        Path = $outFile
+                        DestinationPath = $libPath
+                        Force = $true
+                        ErrorAction = "Stop"
+                    }
+                    Expand-Archive @extractParams
                     #TODO get actual version if "latest"                    
                     # Check if the ZIP file was already extracted
                     # Pwsh does not generate a wrapper, so this will be specific to the artifact,
@@ -214,8 +235,7 @@ function Copy-GitHubRelease {
         #   }
     }
     catch {
-        Write-Host "An error occurred while downloading the release. Please check the inputs."
-        Write-Host "Error details: $($_.Exception.Message)"
+        throw "Failed to download release '$Version' for '$RepoOwner/$RepoName': $($_.Exception.Message)"
     }
 }
 
@@ -304,4 +324,3 @@ function Clear-LatestVersionCache {
     param()
     $Script:LatestVersionCache = @{}
 }
-

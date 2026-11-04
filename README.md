@@ -114,7 +114,8 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-Processor` | string | Processor to use: `xmlcalabash`, `morganaxproc`, `dotnet`, `msxml`, `altova`, `xsltproc`, `phoenixml` |
 | `-InPort` | hashtable/string/xml | Input port bindings: `@{ portName = "./test_data/order.xml" }`; a single value binds to the pipeline's primary input port |
 | `-OutPort` | hashtable/string | Output port bindings: `@{ portName = "./test_data/out/order-total.out.xml" }`; a single value binds to the pipeline's primary output port |
-| `-Options` | hashtable | Pipeline options/parameters |
+| `-Options` | hashtable | Literal XProc options (strings, booleans, numbers), or existing XSLT parameter bindings |
+| `-OptionExpressions` | hashtable | XProc only: explicit XPath option expressions; evaluated without a context item |
 | `-PackageResolution` | hashtable | Dependency resolution settings: `SbomPath`, `TargetComposition`, `GetLatest`, `AdditionalPackages`, `ValidateSbom`; when omitted, the session default composition (see `Select-PXComposition`) is used |
 | `-Namespace` | hashtable | Namespace bindings: `@{ prefix = "uri" }` |
 | `-Catalog` | string | XML catalog file path |
@@ -122,6 +123,24 @@ Main function for XML transformations. Full documentation available via `Get-Hel
 | `-PassthroughJava` | array | Arguments passed to the JVM |
 | `-MultiplexOutput` | string | XProc only: write all outputs (STDOUT + bound ports) to one multipart/mixed file with `X-Port` headers |
 | `-ClassPath` | string | XProc only: a ready-made Java classpath used verbatim, bypassing PolyglotPM dependency resolution |
+
+For both XProc processors, `Options = @{ name = "John" }` supplies the string `John`, while `OptionExpressions = @{ name = "concat('Jo', 'hn')" }` evaluates XPath. Strings are never inferred to be expressions: `"5 + 3"`, `"?5 + 3"`, and `"'John'"` remain literal strings. Numbers and booleans retain their value types. Nulls, arrays, maps, and other objects are rejected in `Options`; use explicit expressions for values such as `()`, `(1, 2)`, or `map { 'key': 'value' }`.
+
+Literal and expression dictionaries can be mixed, but the same expanded option name cannot appear twice, including under different namespace prefixes. Names may be QNames or EQNames; prefixes resolve through `-Namespace` and the session registry. This also applies to direct step mode. `-OptionExpressions` is rejected for XSLT; existing XSLT parameter behavior is unchanged.
+
+Literal types must be compatible with the pipeline or step's declared option types. For example, use `OptionExpressions = @{ "attribute-name" = "QName('', 'label')" }` for an `xs:QName` option rather than depending on processor-specific string coercion.
+
+**Compatibility change:** migrate XPath previously supplied through `Options` to `OptionExpressions`. Remove Morgana-specific quoting around literal values (`"'John'"` becomes `"John"`), and remove Calabash's leading `?` when moving an expression to `OptionExpressions`.
+
+Unicode literal strings are serialized using XPath code points to avoid native-argument loss in Java 17's Windows launcher. XProc JVMs default to UTF-8 for stdout; an explicit encoding property in `-PassthroughJava` takes precedence.
+
+Generated XML inputs, processor configurations, and step wrappers use BOM-free UTF-8 consistently on Core and Windows PowerShell 5.1.
+
+Calabash text output separators vary with temporary-path length. PowerXML recognizes short header padding and variable-width trailer lines when collecting document sequences.
+
+On Windows PowerShell 5.1, merged Java stderr is collected as diagnostic output rather than terminating a successful run. Processor failures are determined by the process exit code, and dependency classpaths use absolute JAR paths on every host.
+
+`Copy-GitHubRelease` uses `GITHUB_TOKEN`, when set, for release metadata requests to `https://api.github.com`. CI supplies its read-only Actions token to integration tests to avoid anonymous API rate limits. The token is not sent to asset downloads or custom API hosts. Download failures propagate as errors.
 
 ### Composition Registry
 
@@ -209,11 +228,43 @@ PowerXML/
 
 ## Testing
 
-PowerXML uses [Pester](https://pester.dev/) for testing. Run the full suite with code coverage:
+PowerXML uses [Pester](https://pester.dev/) 5.7.1 or later for testing. The harness returns a failing process status for failed assertions, discovery failures, or an empty test selection. Run the full suite with code coverage:
 
 ```powershell
 pwsh ./test-harness.ps1
 ```
+
+Run the unit/local-processor suite without network-dependent processor tests:
+
+```powershell
+pwsh ./test-harness.ps1 -Suite Unit -NoCoverage
+```
+
+Run the integration files separately (Java 17 and network access are required):
+
+```powershell
+pwsh ./test-harness.ps1 -Suite Integration -NoCoverage
+```
+
+The integration suite contains `powerxml.tests.ps1` and `polyglot.integration.tests.ps1`; the remaining root and Polyglot test files form the unit suite. Some unit tests exercise locally installed optional processors and explicitly skip when those processors are unavailable. `-NoCache` uses a fresh dependency repository that is removed after the run. Reports default to `test_out`; use `-OutputPath` to change this. Coverage excludes tests and build output.
+
+The [CI workflow](.github/workflows/ci.yml) runs both suites on Linux, macOS, Windows PowerShell Core, and Windows PowerShell 5.1 for pull requests and pushes to `develop`. Analyzer errors block the build; warnings are reported while existing debt is addressed. To run all validation without publishing, select **Actions > CI > Run workflow** and choose a branch or tag. Manual runs never publish.
+
+Linux unit jobs install `xsltproc` through apt. macOS unit jobs use the system executable when available, otherwise install Homebrew `libxslt` and add its keg-only `bin` directory to `PATH`. Both jobs verify executable discovery and version before testing, so missing xsltproc coverage fails provisioning instead of silently skipping the six backend tests. Windows retains optional xsltproc detection.
+
+The [Release workflow](.github/workflows/release.yml) runs only when a `v*.*.*` tag is pushed. It calls the same CI workflow against the tagged commit, then publishes the validated artifact only after all tests, the staged-module smoke test, and the required-validation check succeed. The staging and smoke-test scripts are also regression-tested in separate fresh processes, using native file paths for .NET on every host. CI has read-only permissions and receives no publication secrets; write permissions and the `PSGALLERY` secret are used only by the publishing job.
+
+### Configuring the merge gate
+
+Workflow checks alone do not prevent merging. Configure an active branch ruleset for `develop`:
+
+1. Push the workflows and let a pull request run CI so GitHub can discover **CI / Required validation**.
+2. In **Settings > Rules > Rulesets**, create a branch ruleset (or edit **Require CI validation on develop**, if already present), targeting `develop`.
+3. Enable **Require a pull request before merging**. No approving review is required by this test gate.
+4. Enable **Require status checks to pass**, select **CI / Required validation**, and select GitHub Actions as its source. Enable **Require branches to be up to date before merging**.
+5. Leave the bypass list empty if the gate must apply to everyone, including administrators. Set enforcement to **Active** and save.
+
+The required check runs even when dependencies fail and rejects failed, cancelled, skipped, or missing dependency results. Require this single aggregate check rather than each matrix job; it includes all test hosts and package validation. A disabled ruleset does not protect merges. Resolve known integration failures before activation if normal merges must remain possible. If a merge queue is introduced, add a `merge_group` trigger to CI before enabling it.
 
 Or run individual test files:
 

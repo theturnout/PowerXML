@@ -30,11 +30,30 @@ Transform-PXXml
 ### Pass Options to Pipeline
 
 ```powershell
-Transform-PXXml 
-	-Processor "xmlcalabash" 
-	-Pipeline "./test_data/optionalHelloWorld.xpl" 
-	-Options @{ name = "John" }
+$transformParams = @{
+	Processor = "xmlcalabash"
+	Pipeline = ".\test_data\optionalHelloWorld.xpl"
+	Options = @{ name = "John" }
+}
+Transform-PXXml @transformParams
 ```
+
+`Options` supplies literal strings, booleans, and numbers consistently on XML Calabash and Morgana. Do not add XPath quotes around a string. Strings such as `"5 + 3"` and `"?5 + 3"` stay strings.
+
+For XPath, use `OptionExpressions` explicitly:
+
+```powershell
+$transformParams = @{
+	Processor = "morganaxproc"
+	Pipeline = ".\test_data\optionalHelloWorld.xpl"
+	OptionExpressions = @{ name = "concat('Jo', 'hn')" }
+}
+Transform-PXXml @transformParams
+```
+
+You can mix `Options` and `OptionExpressions` for different options. Duplicate expanded names are rejected. Expressions use the effective namespace bindings and have no context item. Use expressions for sequences, maps, or an empty sequence; these values are not accepted as literal PowerShell objects. Expressions are XProc-only, including direct step mode; existing XSLT parameter behavior is unchanged.
+
+When migrating existing code, move XPath from `Options` to `OptionExpressions`, remove Calabash's leading `?`, and replace Morgana's prequoted literal `"'John'"` with `"John"`.
 
 ### Output Result to File
 
@@ -334,4 +353,3 @@ PowerXML uses the CycloneDX Software Bill of Materials (SBOM) as a manifest form
 Notes
 
 - PolyglotPM is only used by `Transform-PXXml` when the `-Processing` parameter is set to `xproc`. It cannot retrieve dependencies for other processors or for non-XProc pipelines.
-

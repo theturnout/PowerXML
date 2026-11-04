@@ -19,7 +19,7 @@ The file extension to use for the temporary file if the input is XML content. De
 .PARAMETER TargetEncoding
 The target encoding to use when writing the XML content to a temporary file. Default is "UTF8". Supported encodings include "UTF8", "UTF16", "UTF16LE", "UTF16BE", "ISO-8859-1", and "US-ASCII".
 .NOTES
-Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path) will be returned as-is.
+Any XML input will be rewritten to a temporary file with the given extension and encoding, and the path to that file will be returned. Non-XML input (e.g. a file path or URI) is returned as-is. A path-like string that matches no existing file throws: passing it through unchanged would make the processor treat the path text as document content, surfacing later as a confusing XML parse error.
 #>
 function Resolve-PXXmlInput {
     [CmdletBinding()]
@@ -86,13 +86,35 @@ function Resolve-PXXmlInput {
         else {
             $xmlContent = $InputObject.OuterXml
         }
-        Set-Content `
-            -Path $tempFile `
-            -Value $xmlContent `
-            -Encoding $encoding
+        if ($encoding -eq "UTF8") {
+            [System.IO.File]::WriteAllText($tempFile, $xmlContent, [System.Text.UTF8Encoding]::new($false))
+        }
+        else {
+            $writeParams = @{
+                Path = $tempFile
+                Value = $xmlContent
+                Encoding = $encoding
+                ErrorAction = "Stop"
+            }
+            Set-Content @writeParams
+        }
         return $tempFile
     }
     else {
+        # Fail fast: a path-like string that matches no existing file is almost
+        # certainly a mistake. Passing it through unchanged makes the processor
+        # treat the path text as document content, which surfaces later as a
+        # confusing XML parse error ("Data at the root level is invalid") far
+        # from the actual problem. URIs are passed through (processors can
+        # fetch them), and so is text that does not look like a path.
+        if ($InputObject -is [string]) {
+            $isUri = $InputObject -match '^[A-Za-z][A-Za-z0-9+.-]*://'
+            $looksLikePath = (-not $isUri) -and
+                (($InputObject -match '[\\/]') -or ($InputObject -match '\.[A-Za-z0-9]{1,5}$'))
+            if ($looksLikePath -and -not (Test-Path -LiteralPath $InputObject -PathType Leaf)) {
+                throw "Input '$InputObject' is not valid XML and does not match an existing file. Bind an existing file path, a URI, or well-formed XML content."
+            }
+        }
         return $InputObject
     }
 }
@@ -469,6 +491,10 @@ Either a path to a processor configuration file, or a hashtable of configuration
 XProc only. When set, all outputs (STDOUT documents plus any bound output ports) are additionally written to this file as a multipart/mixed message with an X-Port header per part, suitable for feeding back as input. STDOUT documents are labeled with the conventional "result" port.
 .PARAMETER ClassPath
 XProc only. A ready-made Java classpath used verbatim (order preserved), bypassing PolyglotPM dependency resolution and processor discovery entirely — for tools that manage their own jars. Use -PassthroughJava for JVM options such as javaagents and -Configuration to supply a processor config file. When -ClassPath is given without -Configuration, no config is generated.
+.PARAMETER Options
+Literal string, boolean, or numeric XProc option values, or existing XSLT parameter bindings. Strings are never inferred to be XPath expressions.
+.PARAMETER OptionExpressions
+XProc only. A hashtable of explicit XPath expressions evaluated without a context item using the effective namespace bindings. Ordinary -Options values are literal strings, booleans, or numbers; an option cannot appear in both dictionaries.
 #>
 function Transform-PXXml {
     [CmdletBinding(DefaultParameterSetName = "Pipeline")]
@@ -486,6 +512,7 @@ function Transform-PXXml {
         [string]$Step,
         [Alias("parameters")]
         [hashtable]$Options,
+        [hashtable]$OptionExpressions,
         $InPort,
         $OutPort,
         [string]$Catalog,
@@ -508,10 +535,9 @@ function Transform-PXXml {
     if ($ClassPath -and $Processing -ne "xproc") {
         throw "-ClassPath is only supported for XProc processing."
     }
-
-    $pipelinePath = $null
-    if ($PSCmdlet.ParameterSetName -eq "Pipeline") {
-        $pipelinePath = Resolve-PXXmlInput -InputObject $Pipeline -Extension "xpl"
+    if ($PSBoundParameters.ContainsKey("OptionExpressions") -and
+        ($Processing -ne "xproc" -or $Processor -notin @("xmlcalabash", "morganaxproc"))) {
+        throw "-OptionExpressions is only supported for the XML Calabash and Morgana XProc processors."
     }
 
     # Merge the session-scoped namespace registry (Register-PXNamespace) with the
@@ -528,6 +554,19 @@ function Transform-PXXml {
                 $effectiveNamespace[$key] = $Namespace[$key]
             }
         }
+    }
+    if ($Processing -eq "xproc" -and $Processor -in @("xmlcalabash", "morganaxproc")) {
+        $optionParams = @{
+            Options = $Options
+            OptionExpressions = $OptionExpressions
+            Namespace = $effectiveNamespace
+        }
+        Get-PXXProcOptionBindings @optionParams | Out-Null
+    }
+
+    $pipelinePath = $null
+    if ($PSCmdlet.ParameterSetName -eq "Pipeline") {
+        $pipelinePath = Resolve-PXXmlInput -InputObject $Pipeline -Extension "xpl"
     }
 
     # Resolve the step QName for direct step execution; unprefixed names get "p:"
@@ -584,10 +623,10 @@ function Transform-PXXml {
         $expandedInPort = @{}
         foreach ($key in @($InPort.Keys)) {
             $val = $InPort[$key]
-            $candidate = if ($val -is [string]) { $val } else { $null }
+            $candidate = if ($val -is [string] -and $val.IndexOfAny([System.IO.Path]::GetInvalidPathChars()) -lt 0) { $val } else { $null }
             $isMime = $false
             $boundary = $null
-            if ($candidate -and (Test-Path $candidate -PathType Leaf)) {
+            if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
                 $firstLine = (Get-Content -Path $candidate -TotalCount 1 -ErrorAction SilentlyContinue)
                 if ($firstLine -and $firstLine.Trim().StartsWith("--")) {
                     # Strip exactly the leading "--" delimiter; the boundary itself
@@ -698,6 +737,7 @@ function Transform-PXXml {
                 -Step $stepQName `
                 -Pipeline $pipelinePath `
                 -Options $Options `
+                -OptionExpressions $OptionExpressions `
                 -InPort $inPortProcessed `
                 -OutPort $OutPort `
                 -Catalog $Catalog `
@@ -711,11 +751,15 @@ function Transform-PXXml {
             # MorganaXProc has no step-run CLI: synthesize a wrapper pipeline (#9)
             $morganaPipelinePath = $pipelinePath
             if ($stepQName) {
-                $morganaPipelinePath = New-PXStepShell -Step $stepQName `
-                    -Namespaces $effectiveNamespace `
-                    -InPort $inPortProcessed `
-                    -OutPort $OutPort `
-                    -Options $Options
+                $shellParams = @{
+                    Step = $stepQName
+                    Namespaces = $effectiveNamespace
+                    InPort = $inPortProcessed
+                    OutPort = $OutPort
+                    Options = $Options
+                    OptionExpressions = $OptionExpressions
+                }
+                $morganaPipelinePath = New-PXStepShell @shellParams
             }
             try {
                 $result = Invoke-MorganaXProc `
@@ -724,6 +768,7 @@ function Transform-PXXml {
                     -InputObject $InputObject `
                     -Pipeline $morganaPipelinePath `
                     -Options $Options `
+                    -OptionExpressions $OptionExpressions `
                     -InPort $inPortProcessed `
                     -OutPort $OutPort `
                     -Catalog $Catalog `

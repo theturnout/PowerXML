@@ -222,6 +222,145 @@ Describe 'Copy-GitHubRelease' {
         }
     }
 
+	Context "GitHub API authentication and failures" {
+		BeforeEach {
+			$script:PreviousGitHubToken = $env:GITHUB_TOKEN
+			$env:GITHUB_TOKEN = "powerxml-test-token"
+			Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
+				[pscustomobject]@{
+					tag_name = "v1"
+					assets = @(
+						[pscustomobject]@{
+							name = "authenticated-tool.zip"
+							browser_download_url = "https://example.com/authenticated-tool.zip"
+						}
+					)
+				}
+			}
+			Mock Invoke-WebRequest -ModuleName polyglot -MockWith {
+				New-Item -ItemType File -Path $OutFile | Out-Null
+			}
+			Mock Expand-Archive -ModuleName polyglot -MockWith {
+				New-Item -ItemType Directory -Path (Join-Path -Path $DestinationPath -ChildPath "authenticated-tool") | Out-Null
+			}
+		}
+
+		AfterEach {
+			$env:GITHUB_TOKEN = $script:PreviousGitHubToken
+		}
+
+		It "Authenticates GitHub metadata but not asset downloads" {
+			$copyParams = @{
+				RepoOwner = "owner"
+				RepoName = "repo"
+				Assets = @("authenticated-tool.zip")
+				LibPath = $script:LibPath
+			}
+			Copy-GitHubRelease @copyParams | Should -Not -BeNullOrEmpty
+			$invokeParams = @{
+				CommandName = "Invoke-RestMethod"
+				ModuleName = "polyglot"
+				Times = 1
+				Exactly = $true
+				ParameterFilter = { $Headers.Authorization -eq "Bearer powerxml-test-token" -and $ErrorAction -eq "Stop" }
+			}
+			Should -Invoke @invokeParams
+			$invokeParams.CommandName = "Invoke-WebRequest"
+			$invokeParams.ParameterFilter = { -not $Headers -or -not $Headers.ContainsKey("Authorization") }
+			Should -Invoke @invokeParams
+		}
+
+		It "Does not send the GitHub token to <ApiPath>" -ForEach @(
+			@{ ApiPath = "https://codeberg.org/api/v1" }
+			@{ ApiPath = "http://api.github.com" }
+			@{ ApiPath = "https://api.github.com.example.com" }
+			@{ ApiPath = "https://api.github.com:8443" }
+		) {
+			$copyParams = @{
+				RepoOwner = "owner"
+				RepoName = "repo"
+				Assets = @("authenticated-tool.zip")
+				LibPath = $script:LibPath
+				ApiPath = $ApiPath
+			}
+			Copy-GitHubRelease @copyParams | Should -Not -BeNullOrEmpty
+			$invokeParams = @{
+				CommandName = "Invoke-RestMethod"
+				ModuleName = "polyglot"
+				Times = 1
+				Exactly = $true
+				ParameterFilter = { -not $Headers -or -not $Headers.ContainsKey("Authorization") }
+			}
+			Should -Invoke @invokeParams
+		}
+
+		It "Supports anonymous requests when GITHUB_TOKEN is absent" {
+			$env:GITHUB_TOKEN = $null
+			$copyParams = @{
+				RepoOwner = "owner"
+				RepoName = "repo"
+				Assets = @("authenticated-tool.zip")
+				LibPath = $script:LibPath
+			}
+			Copy-GitHubRelease @copyParams | Should -Not -BeNullOrEmpty
+			$invokeParams = @{
+				CommandName = "Invoke-RestMethod"
+				ModuleName = "polyglot"
+				Times = 1
+				Exactly = $true
+				ParameterFilter = { -not $Headers -or -not $Headers.ContainsKey("Authorization") }
+			}
+			Should -Invoke @invokeParams
+		}
+
+		It "Propagates API errors with release context and does not download assets" {
+			Mock Invoke-RestMethod -ModuleName polyglot { throw "403 rate limit exceeded" }
+			$copyParams = @{
+				RepoOwner = "owner"
+				RepoName = "repo"
+				Version = "v1"
+				LibPath = $script:LibPath
+			}
+			{ Copy-GitHubRelease @copyParams } | Should -Throw "*Failed to download release 'v1' for 'owner/repo':*403 rate limit exceeded*"
+			$invokeParams = @{
+				CommandName = "Invoke-WebRequest"
+				ModuleName = "polyglot"
+				Times = 0
+				Exactly = $true
+			}
+			Should -Invoke @invokeParams
+		}
+
+		It "Stops on asset download errors without attempting extraction" {
+			Mock Invoke-WebRequest -ModuleName polyglot {
+				throw "Asset download failed"
+			}
+			$copyParams = @{
+				RepoOwner = "owner"
+				RepoName = "repo"
+				Version = "v1"
+				Assets = @("authenticated-tool.zip")
+				LibPath = $script:LibPath
+			}
+			{ Copy-GitHubRelease @copyParams } | Should -Throw "*Failed to download release 'v1' for 'owner/repo':*Asset download failed*"
+			$invokeParams = @{
+				CommandName = "Invoke-WebRequest"
+				ModuleName = "polyglot"
+				Times = 1
+				Exactly = $true
+				ParameterFilter = { $ErrorAction -eq "Stop" }
+			}
+			Should -Invoke @invokeParams
+			$invokeParams = @{
+				CommandName = "Expand-Archive"
+				ModuleName = "polyglot"
+				Times = 0
+				Exactly = $true
+			}
+			Should -Invoke @invokeParams
+		}
+	}
+
     Context 'Download specific version' {
         BeforeEach {
             Mock Invoke-RestMethod -ModuleName polyglot -MockWith {
